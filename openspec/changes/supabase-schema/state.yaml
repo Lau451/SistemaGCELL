@@ -10,9 +10,9 @@ session_preflight:
 
 dag:
   proposal: complete
-  specs: pending
-  design: pending
-  tasks: pending
+  specs: complete
+  design: complete
+  tasks: complete
   apply: pending
   verify: pending
   archive: pending
@@ -20,6 +20,19 @@ dag:
 phases_completed:
   - explore
   - propose
+  - spec
+  - design
+  - tasks
+
+review_workload_decision:
+  budget_risk: medium
+  estimated_changed_lines: "~300-420"
+  chained_prs: false
+  delivery_strategy: ask-on-risk
+  decision_needed_before_apply: false
+  note: "Under guard trigger thresholds (risk not High, chaining not recommended) -> single PR, no stop-and-ask needed"
+
+docker_verified: "true -- Server Version 29.6.2, confirmed running on this host before tasks phase"
 
 product_decisions:
   scope: "medium — products + variants + stock ledger; content/AI deferred"
@@ -35,7 +48,7 @@ known_conflicts:
     migrations/ holds no schema SQL. This change supersedes it — sdd-spec must author a delta
     that explicitly modifies/retires that requirement, not just add new ones.
 
-next_recommended: sdd-spec and sdd-design (parallelizable per dependency graph)
+next_recommended: sdd-apply (single PR, no chaining needed)
 
 notes: |
   Builds on archived initial-scaffolding (supabase init only, no schema).
