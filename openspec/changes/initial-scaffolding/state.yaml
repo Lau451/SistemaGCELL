@@ -1,0 +1,58 @@
+change: initial-scaffolding
+schema: spec-driven-state/v1
+
+session_preflight:
+  pace: interactive
+  artifact_store: hybrid
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+  review_budget_lines: 400
+
+review_workload_decision:
+  budget_risk: high
+  chained_prs: true
+  pr_order: [frontend, backend, supabase, config]
+  chain_strategy: stacked-to-main
+
+dag:
+  proposal: complete
+  specs: complete
+  design: complete
+  tasks: complete
+  apply: in_progress
+  verify: pending
+  archive: pending
+
+phases_completed:
+  - explore
+  - propose
+  - spec
+  - design
+  - tasks
+
+pr_progress:
+  pr1_frontend:
+    status: complete
+    branch: pr1-frontend-scaffold
+    pushed: false
+    tasks: "1.1-1.11 (11/11)"
+    tests: "7/7 passing"
+    sdd_attempt_ledger: settled (state: complete, changed_lines: 13360, budget recalibrated to 20000 after initial 400 miscalibration)
+  pr2_backend:
+    status: complete
+    branch: pr2-backend-scaffold
+    branched_from: main
+    pushed: false
+    tasks: "2.1-2.8 (8/8)"
+    tests: "8/8 passing"
+  pr3_supabase: pending
+  pr4_config: pending
+
+next_recommended: review PR1 and PR2 locally, push/open both PRs, then sdd-apply PR3 (supabase)
+
+notes: |
+  Brand-new project, zero application code at time of exploration.
+  Scope: Next.js (App Router/TS/Tailwind/shadcn/Serwist PWA) + Vitest/RTL skeleton,
+  uv-managed FastAPI hexagonal skeleton (products domain worked example) + pytest,
+  supabase init only (no schema SQL). Playwright deferred. Test commands must be
+  pinned by sdd-tasks per Strict TDD Mode.
