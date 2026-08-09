@@ -1,0 +1,16 @@
+{
+  "name": "SistemaGCELL",
+  "short_name": "SistemaGCELL",
+  "description": "SistemaGCELL catalog and admin platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
