@@ -1,0 +1,44 @@
+change: supabase-schema
+schema: spec-driven-state/v1
+
+session_preflight:
+  pace: interactive
+  artifact_store: hybrid
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+  review_budget_lines: 400
+
+dag:
+  proposal: complete
+  specs: pending
+  design: pending
+  tasks: pending
+  apply: pending
+  verify: pending
+  archive: pending
+
+phases_completed:
+  - explore
+  - propose
+
+product_decisions:
+  scope: "medium — products + variants + stock ledger; content/AI deferred"
+  storage: "include now — one public-read bucket for product photos, service_role-only writes"
+  domain_alignment: "SQL-only this change; Python domain code (id/color/slug, get_by_id) is an explicit fast-follow"
+  stock_model: "append-only movements ledger (user override — reversed sdd-propose's original counter recommendation)"
+  public_stock_visibility: "boolean in_stock only, never exact/approximate count"
+  product_url_identity: "unique slug column, not raw UUID"
+
+known_conflicts:
+  - >
+    Archived platform-foundation spec's "Supabase CLI Wiring Without Schema" requirement asserts
+    migrations/ holds no schema SQL. This change supersedes it — sdd-spec must author a delta
+    that explicitly modifies/retires that requirement, not just add new ones.
+
+next_recommended: sdd-spec and sdd-design (parallelizable per dependency graph)
+
+notes: |
+  Builds on archived initial-scaffolding (supabase init only, no schema).
+  Migration naming already decided there: CLI timestamp default, carried forward.
+  Docker Desktop availability on this host is unverified and becomes a hard
+  dependency for supabase start/db reset local testing before this change's apply.
