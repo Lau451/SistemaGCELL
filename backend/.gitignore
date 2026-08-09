@@ -1,0 +1,10 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+
+# uv-managed virtual environment
+.venv/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
