@@ -1,0 +1,70 @@
+schema: spec-driven
+
+context: |
+  Project: SistemaGCELL (brand new, no app code yet).
+  Frontend: Next.js (App Router) + TypeScript + Tailwind + shadcn/ui, PWA.
+  Route groups: (public) SSR/ISR catalog, (admin) auth-protected panel.
+  Backend: FastAPI (Python), hexagonal/screaming by domain
+    (products, stock, content, ai, recommendation, shared).
+  DB/Storage: Supabase (Postgres + Storage), region São Paulo.
+  AI: Google Gemini API (image + text), backend-only calls.
+  Hosting: Next.js on Vercel, FastAPI on Fly.io (São Paulo).
+  Testing: no runner installed yet — resolve command in first sdd-tasks.
+
+strict_tdd: true
+
+testing:
+  status: not-yet-implemented
+  runner_command: null
+  frameworks:
+    frontend: null # e.g. Vitest/Jest + Testing Library — TBD
+    backend: null  # e.g. pytest + httpx — TBD
+  layers:
+    unit: unavailable
+    integration: unavailable
+    e2e: unavailable
+  coverage:
+    available: false
+    command: null
+  quality_tools:
+    linter: null
+    type_checker: null
+    formatter: null
+  note: >
+    No package.json/pyproject.toml exist yet. Strict TDD Mode is enabled
+    globally via user CLAUDE.md, so the first sdd-tasks phase for any change
+    MUST select and pin the test runner/commands (frontend + backend) before
+    task breakdown, and tests must be written first once implementation starts.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Call out Supabase schema/migration impact explicitly
+    - Note any new Gemini API usage and where it is invoked (backend only)
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Group domain requirements per hexagonal domain (products, stock, content, ai, recommendation, shared)
+  design:
+    - Include sequence diagrams for complex flows (e.g. AI generation, checkout-like flows)
+    - Document architecture decisions with rationale
+    - Respect route groups: (public) vs (admin) in Next.js App Router
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - First change MUST pin test runner/commands for frontend and backend
+    - Forecast 400-line review budget risk per _shared/sdd-phase-common.md
+  apply:
+    guidelines:
+      - Follow hexagonal/screaming architecture boundaries on the backend
+      - Keep AI (Gemini) calls backend-only, never from the Next.js client
+      - Follow existing code patterns once established
+    tdd: true
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
+    - Warn before merging deltas touching Supabase schema
