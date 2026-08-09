@@ -14,27 +14,28 @@ context: |
 strict_tdd: true
 
 testing:
-  status: not-yet-implemented
-  runner_command: null
+  status: implemented
+  runner_command: "npm --prefix frontend test && uv run --project backend pytest -q"
   frameworks:
-    frontend: null # e.g. Vitest/Jest + Testing Library — TBD
-    backend: null  # e.g. pytest + httpx — TBD
+    frontend: "Vitest + @testing-library/react (jsdom)"
+    backend: "pytest + pytest-asyncio + httpx (fastapi.testclient)"
   layers:
-    unit: unavailable
-    integration: unavailable
+    unit: available
+    integration: available
     e2e: unavailable
   coverage:
     available: false
     command: null
   quality_tools:
-    linter: null
-    type_checker: null
-    formatter: null
+    linter: "eslint / ruff"
+    type_checker: "tsc --noEmit"
+    formatter: "ruff format"
   note: >
-    No package.json/pyproject.toml exist yet. Strict TDD Mode is enabled
-    globally via user CLAUDE.md, so the first sdd-tasks phase for any change
-    MUST select and pin the test runner/commands (frontend + backend) before
-    task breakdown, and tests must be written first once implementation starts.
+    Two independent stacks, two pinned commands — run both sequentially (or
+    via runner_command) to confirm the project is green. Frontend:
+    `npm --prefix frontend test` (script = `vitest run`). Backend:
+    `uv run --project backend pytest -q`. Both are root-relative and
+    PowerShell-safe.
 
 rules:
   proposal:
@@ -60,10 +61,16 @@ rules:
       - Keep AI (Gemini) calls backend-only, never from the Next.js client
       - Follow existing code patterns once established
     tdd: true
-    test_command: ""
+    test_command:
+      frontend: "npm --prefix frontend test"
+      backend: "uv run --project backend pytest -q"
   verify:
-    test_command: ""
-    build_command: ""
+    test_command:
+      frontend: "npm --prefix frontend test"
+      backend: "uv run --project backend pytest -q"
+    build_command:
+      frontend: "npm --prefix frontend run build"
+      backend: null
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas
