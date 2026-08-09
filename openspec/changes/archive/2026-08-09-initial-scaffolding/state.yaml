@@ -21,7 +21,7 @@ dag:
   tasks: complete
   apply: complete
   verify: complete
-  archive: pending
+  archive: complete
 
 verify_result:
   verdict: pass_with_warnings
