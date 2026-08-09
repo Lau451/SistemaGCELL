@@ -20,8 +20,31 @@ dag:
   design: complete
   tasks: complete
   apply: complete
-  verify: pending
+  verify: complete
   archive: pending
+
+verify_result:
+  verdict: pass_with_warnings
+  verified_branch: pr4-config-wiring (6d712a5, has all 4 PRs combined; main lacks PR4)
+  tests_independently_run:
+    frontend: "npm --prefix frontend test -> 7/7 passing"
+    backend: "uv run --project backend pytest -q -> 9/9 passing"
+  fresh_clone_stress_test:
+    backend: reproducible (uv auto-syncs .venv from uv.lock)
+    frontend: NOT reproducible without an undocumented `npm install` step first
+  spec_scenarios: "7 requirements / 11 scenarios (platform-foundation) -- 10/11 pass, 1 WARNING"
+  success_criteria: "6/7 fully met; 1 partially met (fresh-clone doc gap, frontend only)"
+  issues:
+    - severity: WARNING
+      description: >
+        Frontend fresh clone fails `npm --prefix frontend test` until `npm install`
+        is run first; nowhere documented. Proposal explicitly declined an onboarding
+        README (solo-dev decision), which created this exact gap.
+    - severity: SUGGESTION
+      description: "supabase/migrations/ directory doesn't exist (vacuously satisfies no-schema-SQL criterion)"
+    - severity: SUGGESTION
+      description: "backend/README.md is 0 bytes"
+  critical_issues: none
 
 phases_completed:
   - explore
@@ -84,7 +107,9 @@ bookkeeping_restructure:
     openspec/config.yaml's testing: block IS real PR4 deliverable content (per the proposal),
     so that edit stays inside PR4's branch, unlike the process-tracking files.
 
-next_recommended: sdd-verify, then push/open PR1-4 (or merge locally-integrated main), then sdd-archive
+next_recommended: >
+  resolve WARNING (document/fix frontend fresh-clone npm install step) or accept as-is,
+  then merge pr4-config-wiring into main / push+open PR1-4, then sdd-archive
 
 notes: |
   Brand-new project, zero application code at time of exploration.
