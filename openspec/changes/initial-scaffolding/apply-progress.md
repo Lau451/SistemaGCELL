@@ -234,3 +234,28 @@ PR1 and PR2 each independently duplicated `openspec/changes/initial-scaffolding/
 
 ### Status
 1/1 Phase 3 task complete. Ready for PR4 (Config Wiring & Verification) to begin.
+
+## Integration note (before PR4)
+
+PR4's tasks (4.3-4.6) need `frontend/`, `backend/`, and `supabase/` present simultaneously — they can't be verified from a branch containing only `main`'s prior content. Merged `pr1-frontend-scaffold`, `pr2-backend-scaffold`, and `pr3-supabase-init` into `main` locally (three clean disjoint-file merges, no conflicts, nothing pushed to origin) before branching `pr4-config-wiring` from the result.
+
+## Work Unit 4 — PR4: Config Wiring & Verification
+
+**Branch**: `pr4-config-wiring` (off the locally-integrated `main`, PR4 of 4 — final PR)
+**Status**: Complete — all 6 Phase 4 tasks done.
+
+### Completed Tasks
+- [x] 4.1 `openspec/config.yaml` `testing:` block: `status: implemented`, both commands pinned (`npm --prefix frontend test`, `uv run --project backend pytest -q`). `rules.apply`/`rules.verify` restructured as `{frontend, backend}` objects.
+- [x] 4.2 Root `.gitignore` hardened with Node/Python/Supabase/env/OS entries as defense-in-depth on top of each stack's own nested `.gitignore` (already present from PR1/PR2/PR3).
+- [x] 4.3 `backend/tests/architecture/test_domain_boundary.py` — AST-walk test (real `ast` module parsing, not regex) banning fastapi/pydantic/supabase/sqlalchemy/httpx imports in any of the 6 domains' `domain/` layer. RED confirmed (temporarily added a violating import, test failed with the exact violation reported), then GREEN after removing it.
+- [x] 4.4 Verified all 18 domain/application/infrastructure subdirectories exist across the 6 domains.
+- [x] 4.5 Both pinned commands run for real: frontend 7/7 passed, backend 9/9 passed (the new architecture test plus the 8 from PR2).
+- [x] 4.6 `git status --porcelain` clean; spot-checked `git check-ignore -v` for node_modules/.venv/.next/__pycache__/supabase temp dirs — all correctly ignored via nested gitignores, root additions are redundant-but-correct defense-in-depth.
+
+### Workload / PR Boundary
+- Mode: stacked-to-main chained PR slice (PR4 of 4, final)
+- Boundary: `openspec/config.yaml`, root `.gitignore`, one new test file. ~118 insertions, 16 deletions — well under the 400-line authored guard.
+- Unlike PR1-3, this branch was NOT created from a disjoint-file base — it required PR1+PR2+PR3 merged first, since verification tasks need the full tree.
+
+### Status
+6/6 Phase 4 tasks complete. `initial-scaffolding` apply phase is now fully done (4/4 PRs). Strict TDD is unblocked project-wide. Ready for `sdd-verify`.

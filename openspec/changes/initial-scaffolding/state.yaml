@@ -19,7 +19,7 @@ dag:
   specs: complete
   design: complete
   tasks: complete
-  apply: in_progress
+  apply: complete
   verify: pending
   archive: pending
 
@@ -53,7 +53,17 @@ pr_progress:
     tasks: "3.1 (1/1)"
     tests: "N/A (no test framework for init, per design)"
     tooling: "npx supabase@latest 2.113.0 (no global install, supabase CLI not present on this machine)"
-  pr4_config: pending
+  pr4_config:
+    status: complete
+    branch: pr4-config-wiring
+    branched_from: main (after locally merging PR1+PR2+PR3, required since 4.3-4.6 need all three present)
+    pushed: false
+    tasks: "4.1-4.6 (6/6)"
+    tests: "frontend 7/7, backend 9/9 (incl. new architecture-boundary AST test, RED-GREEN verified)"
+    note: >
+      openspec/config.yaml testing block is now status: implemented with both
+      pinned commands non-null. Strict TDD is unblocked for every future change
+      in this project.
 
 bookkeeping_restructure:
   reason: >
@@ -74,7 +84,7 @@ bookkeeping_restructure:
     openspec/config.yaml's testing: block IS real PR4 deliverable content (per the proposal),
     so that edit stays inside PR4's branch, unlike the process-tracking files.
 
-next_recommended: push/open PR1, PR2, and PR3, then sdd-apply PR4 (config wiring)
+next_recommended: sdd-verify, then push/open PR1-4 (or merge locally-integrated main), then sdd-archive
 
 notes: |
   Brand-new project, zero application code at time of exploration.

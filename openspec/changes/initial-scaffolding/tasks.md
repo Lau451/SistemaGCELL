@@ -55,9 +55,9 @@ Chain strategy: stacked-to-main
 - [x] 3.1 `supabase init`; verify `config.toml` exists, no schema SQL
 
 ## Phase 4: Config Wiring & Verification
-- [ ] 4.1 Modify `openspec/config.yaml` `testing:` block + `rules.apply.tdd`/`verify`
-- [ ] 4.2 Modify `.gitignore` (node_modules/, .next/, .venv/, __pycache__/, supabase/.temp/)
-- [ ] 4.3 Write `backend/tests/architecture/test_domain_boundary.py` (AST-walk all 6 `domain/` dirs, ban fastapi/pydantic/supabase/sqlalchemy/httpx imports); confirm passes
-- [ ] 4.4 Verify all 6 domains have `domain/application/infrastructure` subdirs
-- [ ] 4.5 Run `npm --prefix frontend test` and `uv run --project backend pytest -q`; confirm both exit 0
-- [ ] 4.6 Confirm `git status --porcelain` shows no ignored artifacts tracked
+- [x] 4.1 Modify `openspec/config.yaml` `testing:` block + `rules.apply.tdd`/`verify`
+- [x] 4.2 Modify `.gitignore` (node_modules/, .next/, .venv/, __pycache__/, supabase/.temp/)
+- [x] 4.3 Write `backend/tests/architecture/test_domain_boundary.py` (AST-walk all 6 `domain/` dirs, ban fastapi/pydantic/supabase/sqlalchemy/httpx imports); confirm passes
+- [x] 4.4 Verify all 6 domains have `domain/application/infrastructure` subdirs
+- [x] 4.5 Run `npm --prefix frontend test` and `uv run --project backend pytest -q`; confirm both exit 0
+- [x] 4.6 Confirm `git status --porcelain` shows no ignored artifacts tracked
