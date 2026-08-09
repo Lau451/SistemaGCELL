@@ -45,7 +45,14 @@ pr_progress:
     pushed: false
     tasks: "2.1-2.8 (8/8)"
     tests: "8/8 passing"
-  pr3_supabase: pending
+  pr3_supabase:
+    status: complete
+    branch: pr3-supabase-init
+    branched_from: main
+    pushed: false
+    tasks: "3.1 (1/1)"
+    tests: "N/A (no test framework for init, per design)"
+    tooling: "npx supabase@latest 2.113.0 (no global install, supabase CLI not present on this machine)"
   pr4_config: pending
 
 bookkeeping_restructure:
@@ -67,7 +74,7 @@ bookkeeping_restructure:
     openspec/config.yaml's testing: block IS real PR4 deliverable content (per the proposal),
     so that edit stays inside PR4's branch, unlike the process-tracking files.
 
-next_recommended: push/open PR1 and PR2, then sdd-apply PR3 (supabase)
+next_recommended: push/open PR1, PR2, and PR3, then sdd-apply PR4 (config wiring)
 
 notes: |
   Brand-new project, zero application code at time of exploration.

@@ -52,7 +52,7 @@ Chain strategy: stacked-to-main
 - [x] 2.8 REFACTOR: clean up app wiring
 
 ## Phase 3: Supabase Init
-- [ ] 3.1 `supabase init`; verify `config.toml` exists, no schema SQL
+- [x] 3.1 `supabase init`; verify `config.toml` exists, no schema SQL
 
 ## Phase 4: Config Wiring & Verification
 - [ ] 4.1 Modify `openspec/config.yaml` `testing:` block + `rules.apply.tdd`/`verify`
