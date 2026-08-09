@@ -36,15 +36,28 @@ verify_result:
   success_criteria: "6/7 fully met; 1 partially met (fresh-clone doc gap, frontend only)"
   issues:
     - severity: WARNING
+      status: resolved
       description: >
         Frontend fresh clone fails `npm --prefix frontend test` until `npm install`
         is run first; nowhere documented. Proposal explicitly declined an onboarding
         README (solo-dev decision), which created this exact gap.
+      resolution: >
+        Added a "Setup" section to frontend/README.md documenting `npm install` as
+        the required first step (commit 5c1ca21 on pr4-config-wiring, merged to main
+        as 92a82af). Re-verified via simulated fresh clone: removed node_modules,
+        confirmed test fails with a clear error; restored + npm install, confirmed
+        7/7 passing again.
     - severity: SUGGESTION
+      status: not_addressed
       description: "supabase/migrations/ directory doesn't exist (vacuously satisfies no-schema-SQL criterion)"
     - severity: SUGGESTION
+      status: not_addressed
       description: "backend/README.md is 0 bytes"
   critical_issues: none
+  post_fix_retest:
+    frontend: "7/7 passing on merged main"
+    backend: "9/9 passing on merged main"
+    main_head: 92a82af (merge of pr4-config-wiring, all 4 PRs now integrated)
 
 phases_completed:
   - explore
@@ -107,9 +120,7 @@ bookkeeping_restructure:
     openspec/config.yaml's testing: block IS real PR4 deliverable content (per the proposal),
     so that edit stays inside PR4's branch, unlike the process-tracking files.
 
-next_recommended: >
-  resolve WARNING (document/fix frontend fresh-clone npm install step) or accept as-is,
-  then merge pr4-config-wiring into main / push+open PR1-4, then sdd-archive
+next_recommended: sdd-archive (WARNING resolved, pr4-config-wiring merged into main at 92a82af, both suites green)
 
 notes: |
   Brand-new project, zero application code at time of exploration.
