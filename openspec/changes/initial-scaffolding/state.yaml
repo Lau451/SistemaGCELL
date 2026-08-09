@@ -48,7 +48,26 @@ pr_progress:
   pr3_supabase: pending
   pr4_config: pending
 
-next_recommended: review PR1 and PR2 locally, push/open both PRs, then sdd-apply PR3 (supabase)
+bookkeeping_restructure:
+  reason: >
+    PR1 and PR2 branches each independently duplicated openspec/changes/initial-scaffolding/
+    (PR2 copied it wholesale from PR1's branch to update its own checkboxes), which would have
+    shown as duplicate diffs when opening real GitHub PRs.
+  resolution: >
+    Landed the shared SDD bookkeeping (config.yaml, exploration/proposal/spec/design/tasks/
+    apply-progress/state.yaml) directly on main (commits ef44ed8, 1e8cc20). Rebased both
+    pr1-frontend-scaffold and pr2-backend-scaffold onto that main so each branch now contains
+    ONLY its own code (frontend/ for PR1, backend/ for PR2) — verified via
+    `git diff main...<branch> --name-only`. Re-ran both test suites post-rebase: frontend 7/7,
+    backend 8/8, no regressions.
+  going_forward: >
+    tasks.md checkboxes, apply-progress.md, and state.yaml updates for PR3/PR4 are applied
+    directly on main by the orchestrator after each PR's apply completes, not inside the PR
+    branches themselves — keeps every feature branch's diff limited to its own deliverable.
+    openspec/config.yaml's testing: block IS real PR4 deliverable content (per the proposal),
+    so that edit stays inside PR4's branch, unlike the process-tracking files.
+
+next_recommended: push/open PR1 and PR2, then sdd-apply PR3 (supabase)
 
 notes: |
   Brand-new project, zero application code at time of exploration.
