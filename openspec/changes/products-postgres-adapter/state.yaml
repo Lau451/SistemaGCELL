@@ -10,8 +10,8 @@ session_preflight:
 
 dag:
   proposal: complete
-  specs: pending
-  design: pending
+  specs: complete
+  design: complete
   tasks: pending
   apply: pending
   verify: pending
@@ -20,6 +20,11 @@ dag:
 phases_completed:
   - explore
   - propose
+  - spec
+  - design
+
+design_findings_verified_by_orchestrator:
+  - "confirmed 'stock' already present in DOMAINS list in backend/tests/architecture/test_domain_boundary.py -- only BANNED_MODULES needs asyncpg added"
 
 product_decisions:
   scope: >
@@ -48,7 +53,7 @@ known_risks:
   - "product_variants -> stock_movements is ON DELETE RESTRICT; delete is explicitly out of scope for this change"
   - "existing openspec/specs/inventory-schema/spec.md already specifies ledger behavior at the DB/schema level -- sdd-spec must scope stock-movement-recording to the backend APPLICATION level to avoid duplicating those requirements"
 
-next_recommended: sdd-spec and sdd-design (parallelizable per dependency graph)
+next_recommended: sdd-tasks
 
 notes: |
   Builds on archived supabase-schema (real Postgres schema, verified end-to-end)
