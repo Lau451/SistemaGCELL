@@ -14,8 +14,32 @@ dag:
   design: complete
   tasks: complete
   apply: complete
-  verify: pending
+  verify: complete
   archive: pending
+
+verify_result:
+  verdict: pass
+  independently_verified:
+    - "DB_URL=... pytest: 74 passed; without DB_URL: 54 passed/20 skipped, 0 failed"
+    - "ruff clean; architecture boundary test passes; DOMAINS includes stock, BANNED_MODULES includes asyncpg (read directly)"
+    - "9 requirements / 19 scenarios across 3 spec files -- all PASS, verified against real code not apply-progress claims"
+    - "id-based __eq__/__hash__ confirmed by direct read; StockMovementRepository confirmed single-method via vars() inspection in a real test"
+    - "sign-direction validation confirmed byte-for-byte match against stock_movements_sign_direction_check CHECK constraint"
+    - "one-way stock->products dependency confirmed via grep"
+    - "atomicity confirmed genuine (not illusory): RegisterStockedProductUseCase owns no transaction itself; composition root shares one connection, adapter's internal transaction() degrades to nested SAVEPOINT; real BEGIN/ROLLBACK test proves both domains' rows erase together"
+    - "main.py lifespan hook + test_health.py's `with TestClient(app)` confirmed by direct read"
+    - "git diff --stat across all 3 PR commits: zero files under frontend/ -- public catalog genuinely untouched"
+  issues:
+    - severity: SUGGESTION
+      description: "no coverage tool configured -- not blocking"
+    - severity: SUGGESTION
+      description: "application/ layer AST import sweep intentionally deferred, documented as out-of-scope in tasks.md"
+  critical_issues: none
+  tooling_note: >
+    gentle-ai sdd-verify-validate's evidence_revision field rejected every git-SHA-derived
+    format tried; verify agent correctly fell back to standard Engram save rather than
+    fabricate a receipt -- consistent with the earlier-known review-mode tool defect from
+    this session (RDD), not a new blocker.
 
 phases_completed:
   - explore
@@ -109,7 +133,7 @@ known_risks:
   - "product_variants -> stock_movements is ON DELETE RESTRICT; delete is explicitly out of scope for this change"
   - "existing openspec/specs/inventory-schema/spec.md already specifies ledger behavior at the DB/schema level -- sdd-spec must scope stock-movement-recording to the backend APPLICATION level to avoid duplicating those requirements"
 
-next_recommended: sdd-verify
+next_recommended: sdd-archive
 
 notes: |
   Builds on archived supabase-schema (real Postgres schema, verified end-to-end)
