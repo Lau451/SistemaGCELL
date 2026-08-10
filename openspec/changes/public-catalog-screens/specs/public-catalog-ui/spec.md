@@ -38,14 +38,15 @@ The `/` and `/catalog` routes MUST render a listing sourced from `catalog_produc
 - THEN the displayed image, price, and `in_stock` MUST update to variant B's values
 - AND no full-page navigation/reload SHALL occur
 
-### Requirement: Out-of-Stock Variants Stay Visible but Disabled
-Variants where `in_stock` is false MUST remain visible on the detail page and MUST render disabled for purchase; they MUST NOT be hidden.
+### Requirement: Out-of-Stock Variants Stay Visible and Selectable
+Variants where `in_stock` is false MUST remain visible on the detail page and MUST stay clickable/selectable; they MUST NOT be hidden and MUST NOT be rendered as a disabled (non-interactive) control. Selecting an out-of-stock variant MUST still swap the displayed image and price, per the color/variant picker requirement, and MUST show a "Sin stock" badge/indicator.
 
-#### Scenario: Out-of-stock color swatch is shown disabled
+#### Scenario: Out-of-stock color swatch is shown selectable with a badge
 - GIVEN a product has one variant with `in_stock = false`
 - WHEN the detail page renders
-- THEN that variant's swatch MUST be visible
-- AND it MUST be marked/styled disabled and MUST NOT be purchasable
+- THEN that variant's swatch MUST be visible and clickable
+- AND it MUST display a "Sin stock" badge/indicator
+- AND selecting it MUST update the displayed image and price like any other variant
 
 ### Requirement: Multi-Price Products Show a "From" Price
 When a product's variants have differing prices, the listing MUST display the minimum variant price prefixed with "from" rather than a single misleading price.

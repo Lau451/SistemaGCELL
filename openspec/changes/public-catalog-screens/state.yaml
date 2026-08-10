@@ -12,7 +12,7 @@ dag:
   proposal: complete
   specs: complete
   design: complete
-  tasks: pending
+  tasks: complete
   apply: pending
   verify: pending
   archive: pending
@@ -22,6 +22,16 @@ phases_completed:
   - propose
   - spec
   - design
+  - tasks
+
+review_workload_decision:
+  budget_risk: high
+  estimated_changed_lines: "~950-1050 (own file-by-file estimate, above design's ~750-960)"
+  chained_prs: true
+  suggested_split: "PR1 foundation (lib/catalog, lib/supabase, next.config.ts, env) -> PR2 pages/UI -> PR3 search API"
+  chain_strategy: stacked-to-main
+  delivery_strategy: ask-on-risk
+  decision_needed_before_apply: true
 
 product_decisions:
   scope: "Full — listing + detail + color picker + search/filters/pagination (user overrode Medium recommendation, anticipates catalog growth)"
@@ -34,7 +44,10 @@ product_decisions:
     visible AND clickable with a "Sin stock" badge (refined during sdd-design: a literally
     disabled swatch would have made that color's image/price unreachable, contradicting
     the original rationale that availability is a real buying signal -- user confirmed
-    the clickable variant)
+    the clickable variant). NOTE: specs/public-catalog-ui/spec.md was written by sdd-spec
+    in parallel with sdd-design and initially retained the stale "disabled" wording from
+    the proposal's original assumption -- orchestrator caught and fixed the drift after
+    sdd-tasks flagged it as a Key Learning, before tasks/apply could act on the wrong spec.
   filter_source: "derived from catalog data, not a curated fixed list (accepted default assumption)"
 
 design_findings_verified_by_orchestrator:
@@ -47,7 +60,7 @@ known_risks:
   - "@supabase/ssr vs Next 16 async cookies() compatibility postdates training data — re-verify at install time"
   - "Empty catalog on first real (non-Docker) deploy is expected — empty-state UI is in-scope success criterion"
 
-next_recommended: sdd-tasks
+next_recommended: sdd-apply (3 chained PRs, stacked-to-main -- orchestrator to confirm split with user before launching)
 
 notes: |
   Builds on archived supabase-schema (catalog_* views, RLS, product-photos bucket
