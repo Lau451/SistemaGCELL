@@ -13,7 +13,7 @@ dag:
   specs: complete
   design: complete
   tasks: complete
-  apply: pending
+  apply: complete
   verify: pending
   archive: pending
 
@@ -23,6 +23,7 @@ phases_completed:
   - spec
   - design
   - tasks
+  - apply
 
 review_workload_decision:
   budget_risk: high
@@ -62,6 +63,25 @@ pr_progress:
     docker_note: "Docker Desktop was not running when sdd-apply's own agent tried to manually verify (used graceful error-state fallback only) -- user started Docker Desktop themselves, orchestrator then ran supabase start + db reset + real browser verification before merge"
     sdd_attempt_ledger: "settled (state: complete, changed_lines within the 2500 max-changed-lines budget acquired upfront -- no reset needed this time, applied the PR1 lesson)"
     merged_to_main: 59f75cd
+  pr3_search_api:
+    status: complete
+    tasks: "3.1-3.10 + 4.1-4.3 (13/13, Phase 3+4 combined -- final slice)"
+    tests: "120/120 passing (18 test files) -- independently re-run by orchestrator"
+    actual_changed_lines: 956
+    budget_exception: "956 vs 400-line budget, same Strict-TDD test-density pattern as PR1/PR2; accepted after ask-on-risk stop"
+    orchestrator_fix: >
+      Found a pre-existing lint error inherited from PR2 (native <a> instead of next/link's
+      <Link> in catalog-empty-state.tsx, @next/next/no-html-link-for-pages) via npm run lint
+      -- not caught by the pinned Vitest test command, so Strict TDD never saw it. Fixed
+      directly (2 lines, mechanical) since it was trivial and left dangling between PRs
+      otherwise; re-confirmed lint clean and 120/120 tests still passing after the fix.
+    verified_by_orchestrator:
+      - "live browser: typed 'Galaxy' in search box, pressed Enter -- URL updated to ?q=Galaxy without reload, listing correctly filtered to only Funda Galaxy S24"
+      - "live browser: searched a nonsense term -- distinct 'No encontramos productos para tu busqueda' no-results state rendered (different from PR2's empty-catalog state), with a working 'Limpiar filtros' link"
+      - "raw curl of GET /api/catalog?q=Galaxy: response JSON contains id/slug/name/priceFrom/hasPriceRange/inStock(boolean)/colors/heroImageUrl/heroImageAlt/page/limit/total/totalPages/filters/applied -- confirmed NO cost field, NO exact stock quantity anywhere"
+      - "console checked clean, no errors during any interaction"
+    sdd_attempt_ledger: "settled (state: complete, changed_lines within the 2000 max-changed-lines budget acquired upfront -- no reset needed)"
+    merged_to_main: 2c0db67
 
 product_decisions:
   scope: "Full — listing + detail + color picker + search/filters/pagination (user overrode Medium recommendation, anticipates catalog growth)"
@@ -90,7 +110,7 @@ known_risks:
   - "@supabase/ssr vs Next 16 async cookies() compatibility postdates training data — re-verify at install time"
   - "Empty catalog on first real (non-Docker) deploy is expected — empty-state UI is in-scope success criterion"
 
-next_recommended: sdd-apply (3 chained PRs, stacked-to-main -- orchestrator to confirm split with user before launching)
+next_recommended: sdd-verify
 
 notes: |
   Builds on archived supabase-schema (catalog_* views, RLS, product-photos bucket
