@@ -14,8 +14,29 @@ dag:
   design: complete
   tasks: complete
   apply: complete
-  verify: pending
+  verify: complete
   archive: pending
+
+verify_result:
+  verdict: pass_with_warnings
+  independently_verified:
+    - "npm test: 18 files / 120 tests, npm run lint clean, npm run build clean (own run)"
+    - "git status clean; frontend/src/app/page.tsx confirmed genuinely deleted"
+    - "live checks against running dev server + real seed: / , /catalog, /product/fundas-iphone-15 -> 200; /product/does-not-exist -> 404; /api/catalog variants (no params, ?q=funda, ?page=0, ?model=NoSuchModel) all returned correct status/shape"
+    - "curled real HTML, grepped for cost*/quantity* with a positive-control grep (priceFrom) to prove the pipeline wasn't a no-op -- zero sensitive-field matches"
+    - "read variant-picker.tsx in full: zero disabled= attributes anywhere"
+    - "read queries.ts/route.ts: only .from() call site is CatalogRelation-typed (base table = compile error); zero select(\"*\") or service_role/SERVICE_ROLE anywhere in frontend/src"
+    - "hand-traced runtime-caching.ts regexes against real routes -- all match; git log --follow shows exactly ONE commit ever on that file (the original scaffold), independent confirmation of byte-identity beyond the pinned-SHA256 test"
+  issues:
+    - severity: WARNING
+      status: resolved
+      description: >
+        Engram-stored spec artifact (sdd/public-catalog-screens/spec) had stale
+        "visible but disabled" wording for the out-of-stock requirement, contradicting
+        the correct on-disk specs/public-catalog-ui/spec.md (fixed earlier, before
+        sdd-tasks). Orchestrator's on-disk fix never propagated to the Engram mirror.
+      resolution: "Re-saved/upserted the Engram topic_key sdd/public-catalog-screens/spec with the correct current on-disk text (mem_save id 294)."
+  critical_issues: none
 
 phases_completed:
   - explore
@@ -110,7 +131,7 @@ known_risks:
   - "@supabase/ssr vs Next 16 async cookies() compatibility postdates training data — re-verify at install time"
   - "Empty catalog on first real (non-Docker) deploy is expected — empty-state UI is in-scope success criterion"
 
-next_recommended: sdd-verify
+next_recommended: sdd-archive (WARNING was Engram-mirror drift only, resolved via topic_key upsert -- no code change needed)
 
 notes: |
   Builds on archived supabase-schema (catalog_* views, RLS, product-photos bucket
