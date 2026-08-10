@@ -10,8 +10,8 @@ session_preflight:
 
 dag:
   proposal: complete
-  specs: pending
-  design: pending
+  specs: complete
+  design: complete
   tasks: pending
   apply: pending
   verify: pending
@@ -20,6 +20,8 @@ dag:
 phases_completed:
   - explore
   - propose
+  - spec
+  - design
 
 product_decisions:
   scope: "Full — listing + detail + color picker + search/filters/pagination (user overrode Medium recommendation, anticipates catalog growth)"
@@ -28,15 +30,24 @@ product_decisions:
   landing_route: "/ IS the listing (accepted default assumption)"
   freshness: "revalidate = 300 (5 min)"
   listing_price_display: "\"from {min}\" when variants differ in price"
-  out_of_stock_display: "visible but disabled, not hidden"
+  out_of_stock_display: >
+    visible AND clickable with a "Sin stock" badge (refined during sdd-design: a literally
+    disabled swatch would have made that color's image/price unreachable, contradicting
+    the original rationale that availability is a real buying signal -- user confirmed
+    the clickable variant)
   filter_source: "derived from catalog data, not a curated fixed list (accepted default assumption)"
+
+design_findings_verified_by_orchestrator:
+  - "catalog_products view has no `model` column (confirmed reading the migration SQL directly) -- phone-model filter must query catalog_variants.phone_model instead"
+  - "supabase/seed.sql has zero hero images (all product_images inserts use non-null variant_id) -- confirmed reading seed.sql directly. Hero resolution falls back to default variant's first image / placeholder"
+  - "frontend/src/app/page.tsx (scaffold default) collides with new (public)/page.tsx at route '/' -- design's file-change table marks the scaffold page for deletion"
 
 known_risks:
   - "400-line review budget risk flagged High in proposal — pre-suggested 3 stacked slices (client+env+config / listing+detail+picker / route handler+search). sdd-tasks owns the real forecast."
   - "@supabase/ssr vs Next 16 async cookies() compatibility postdates training data — re-verify at install time"
   - "Empty catalog on first real (non-Docker) deploy is expected — empty-state UI is in-scope success criterion"
 
-next_recommended: sdd-spec and sdd-design (parallelizable per dependency graph)
+next_recommended: sdd-tasks
 
 notes: |
   Builds on archived supabase-schema (catalog_* views, RLS, product-photos bucket
