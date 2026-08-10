@@ -32,6 +32,23 @@ review_workload_decision:
   chain_strategy: stacked-to-main
   delivery_strategy: ask-on-risk
   decision_needed_before_apply: true
+  user_confirmed: "3 chained PRs, stacked-to-main"
+
+pr_progress:
+  pr1_foundation:
+    status: complete
+    tasks: "1.1-1.17 (17/17)"
+    tests: "58/58 passing (8 test files) -- independently re-run by orchestrator"
+    actual_changed_lines: 855
+    budget_exception: >
+      855 vs 400-line budget (~2x), driven by 58 Strict-TDD unit tests across 8 pure
+      modules. User accepted as size:exception after ask-on-risk stop (declined
+      splitting this cohesive, tightly-coupled foundation layer further).
+    verified_by_orchestrator:
+      - "column allowlist constants (CATALOG_PRODUCT_COLUMNS/CATALOG_VARIANT_COLUMNS/CATALOG_IMAGE_COLUMNS) spot-checked against the real view DDL in 20260810000458_public_catalog_rls.sql -- exact match, no sensitive columns"
+      - "frontend/.env.local confirmed gitignored (git status shows only .env.example as tracked); no service_role key anywhere in frontend"
+    sdd_attempt_ledger: "settled (state: complete, changed_lines: 1117 raw diff; reset once from 800 to 2000 max-changed-lines budget, same miscalibration pattern as initial-scaffolding PR1)"
+    merged_to_main: fb1b649
 
 product_decisions:
   scope: "Full — listing + detail + color picker + search/filters/pagination (user overrode Medium recommendation, anticipates catalog growth)"
