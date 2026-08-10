@@ -46,27 +46,27 @@ Chain strategy: pending
 
 ## Phase 2: Pages & UI (PR 2)
 
-- [ ] 2.1 Delete `frontend/src/app/page.tsx` (scaffold; collides with `(public)/page.tsx` at `/`).
-- [ ] 2.2 Modify `frontend/src/app/layout.tsx`: replace scaffold metadata.
-- [ ] 2.3 Create `lib/catalog/queries.ts`: 6 builders (scope, listing, variants-for, images-for, detail, filter-options) against `catalog_*` views, column constants only.
-- [ ] 2.4 RED `lib/catalog/queries.test.ts`: fake chainable client — relation names in allowlist, exact column strings, `.in`/`.or`/`.range` composition.
-- [ ] 2.5 RED source-grep test: every `.select(` in `queries.ts` uses only exported column constants (catches future `select("*")`).
-- [ ] 2.6 GREEN: adjust `queries.ts` until 2.4/2.5 pass.
-- [ ] 2.7 Create `components/catalog/catalog-empty-state.tsx`: `empty-catalog` / `no-results` / `error` variants, distinct `role="status"` + `data-testid`.
-- [ ] 2.8 RED RTL test: three states render distinct content/testid (spec empty/no-results scenarios).
-- [ ] 2.9 Create `components/catalog/product-card.tsx`: single price vs "desde {min}" display.
-- [ ] 2.10 RED RTL test: same-price vs differing-price rendering.
-- [ ] 2.11 Create `components/catalog/catalog-listing-view.tsx`: pure grid composing cards + empty state.
-- [ ] 2.12 Create `components/catalog/variant-picker.tsx` (`"use client"`): swatch click swaps image/price/`in_stock`; out-of-stock swatch stays clickable, shows "Sin stock" badge (not `disabled`).
-- [ ] 2.13 RED RTL + user-event test: swatch click swaps state; `vi.spyOn(globalThis,"fetch")` never called after mount; out-of-stock swatch clickable with badge.
-- [ ] 2.14 Create `app/(public)/layout.tsx`: public shell.
-- [ ] 2.15 Create `app/(public)/page.tsx`: listing, `revalidate = 300`, fetch + props only.
-- [ ] 2.16 Create `app/(public)/catalog/page.tsx`: alias, `metadata.alternates.canonical = "/"`.
-- [ ] 2.17 Create `app/(public)/product/[slug]/page.tsx`: detail, `revalidate = 300`, `await params`, `maybeSingle` -> `notFound()`.
-- [ ] 2.18 Create `app/(public)/product/[slug]/not-found.tsx`.
-- [ ] 2.19 Test: import each `page.tsx` module, assert `revalidate === 300` (no jsdom render).
-- [ ] 2.20 RED conformance test: import unmodified `runtime-caching.ts`, invoke matcher for `/`, `/catalog`, `/product/x`; assert match + file byte-identical to pre-change.
-- [ ] 2.21 Verify: `npm --prefix frontend test`; manual browse against local Supabase seed (`supabase start`, 2 products/~4 variants).
+- [x] 2.1 Delete `frontend/src/app/page.tsx` (scaffold; collides with `(public)/page.tsx` at `/`).
+- [x] 2.2 Modify `frontend/src/app/layout.tsx`: replace scaffold metadata.
+- [x] 2.3 Create `lib/catalog/queries.ts`: 6 builders (scope, listing, variants-for, images-for, detail, filter-options) against `catalog_*` views, column constants only.
+- [x] 2.4 RED `lib/catalog/queries.test.ts`: fake chainable client — relation names in allowlist, exact column strings, `.in`/`.or`/`.range` composition.
+- [x] 2.5 RED source-grep test: every `.select(` in `queries.ts` uses only exported column constants (catches future `select("*")`).
+- [x] 2.6 GREEN: adjust `queries.ts` until 2.4/2.5 pass.
+- [x] 2.7 Create `components/catalog/catalog-empty-state.tsx`: `empty-catalog` / `no-results` / `error` variants, distinct `role="status"` + `data-testid`.
+- [x] 2.8 RED RTL test: three states render distinct content/testid (spec empty/no-results scenarios).
+- [x] 2.9 Create `components/catalog/product-card.tsx`: single price vs "desde {min}" display.
+- [x] 2.10 RED RTL test: same-price vs differing-price rendering.
+- [x] 2.11 Create `components/catalog/catalog-listing-view.tsx`: pure grid composing cards + empty state.
+- [x] 2.12 Create `components/catalog/variant-picker.tsx` (`"use client"`): swatch click swaps image/price/`in_stock`; out-of-stock swatch stays clickable, shows "Sin stock" badge (not `disabled`).
+- [x] 2.13 RED RTL + user-event test: swatch click swaps state; `vi.spyOn(globalThis,"fetch")` never called after mount; out-of-stock swatch clickable with badge.
+- [x] 2.14 Create `app/(public)/layout.tsx`: public shell.
+- [x] 2.15 Create `app/(public)/page.tsx`: listing, `revalidate = 300`, fetch + props only.
+- [x] 2.16 Create `app/(public)/catalog/page.tsx`: alias, `metadata.alternates.canonical = "/"`.
+- [x] 2.17 Create `app/(public)/product/[slug]/page.tsx`: detail, `revalidate = 300`, `await params`, `maybeSingle` -> `notFound()`.
+- [x] 2.18 Create `app/(public)/product/[slug]/not-found.tsx`.
+- [x] 2.19 Test: import each `page.tsx` module, assert `revalidate === 300` (no jsdom render).
+- [x] 2.20 RED conformance test: import unmodified `runtime-caching.ts`, invoke matcher for `/`, `/catalog`, `/product/x`; assert match + file byte-identical to pre-change.
+- [x] 2.21 Verify: `npm --prefix frontend test`; manual browse against local Supabase seed (`supabase start`, 2 products/~4 variants). DONE (test suite); manual browse could only be smoke-tested without live Supabase — see apply-progress for details.
 
 ## Phase 3: Search API (PR 3)
 
