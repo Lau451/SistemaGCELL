@@ -12,7 +12,7 @@ dag:
   proposal: complete
   specs: complete
   design: complete
-  tasks: pending
+  tasks: complete
   apply: pending
   verify: pending
   archive: pending
@@ -22,6 +22,16 @@ phases_completed:
   - propose
   - spec
   - design
+  - tasks
+
+review_workload_decision:
+  budget_risk: high
+  estimated_changed_lines: "~1000-1200 across ~26 files (own file-by-file estimate, above design's informal ~19-file note)"
+  chained_prs: true
+  suggested_split: "PR1 domain realignment -> PR2 products Postgres adapter -> PR3 stock domain"
+  chain_strategy: stacked-to-main
+  delivery_strategy: ask-on-risk
+  decision_needed_before_apply: true
 
 design_findings_verified_by_orchestrator:
   - "confirmed 'stock' already present in DOMAINS list in backend/tests/architecture/test_domain_boundary.py -- only BANNED_MODULES needs asyncpg added"
@@ -53,7 +63,7 @@ known_risks:
   - "product_variants -> stock_movements is ON DELETE RESTRICT; delete is explicitly out of scope for this change"
   - "existing openspec/specs/inventory-schema/spec.md already specifies ledger behavior at the DB/schema level -- sdd-spec must scope stock-movement-recording to the backend APPLICATION level to avoid duplicating those requirements"
 
-next_recommended: sdd-tasks
+next_recommended: sdd-apply (3 chained PRs, stacked-to-main -- orchestrator to confirm split with user before launching)
 
 notes: |
   Builds on archived supabase-schema (real Postgres schema, verified end-to-end)
