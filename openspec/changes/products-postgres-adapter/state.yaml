@@ -1,0 +1,58 @@
+change: products-postgres-adapter
+schema: spec-driven-state/v1
+
+session_preflight:
+  pace: interactive
+  artifact_store: hybrid
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+  review_budget_lines: 400
+
+dag:
+  proposal: complete
+  specs: pending
+  design: pending
+  tasks: pending
+  apply: pending
+  verify: pending
+  archive: pending
+
+phases_completed:
+  - explore
+  - propose
+
+product_decisions:
+  scope: >
+    Medium — products/variants wired to real Postgres (asyncpg) PLUS the first
+    stock_movements ledger slice, living in the already-scaffolded stock/ domain
+    (one-way dependency: stock/ -> products/, never reverse). User overrode the
+    exploration's Minimal recommendation to deliver the actual motivation now
+    (admin needs to adjust stock/record cost), accepting rework risk if a fuller
+    stock domain gets built later.
+  db_client: "asyncpg direct connection (not supabase-py/PostgREST) -- native Decimal, real transactions, no HTTP hop"
+  domain_realignment: >
+    Product/ProductVariant gain id(UUID)/slug/color; phone_model moves from
+    ProductVariant to Product as `model` (matches real schema); price/cost move
+    float -> Decimal (matches numeric(10,2), named as this change's target by
+    supabase-schema's design Decision #9); identity/equality becomes id-based.
+  repository_port: "get_by_name -> get_by_slug (matches DB unique constraint, also fixes a real duplicate-check bug) + get_by_id added"
+  http_routes: "NONE in this change -- repository/use-case layers only, tested via pytest. Admin HTTP routes ship in the later admin+auth change."
+  movement_types: "all schema-allowed CHECK-enum types, validated in the domain (accepted default)"
+  initial_stock_movement: "optional -- zero-stock product registration is valid (accepted default)"
+  slug_source: "caller-supplied, validated against the schema's format/length CHECK (accepted default)"
+  stock_read_model: "separate stock query, not hydrated onto ProductVariant -- keeps stock/ from leaking into the products/ aggregate (accepted default)"
+
+known_risks:
+  - "float -> Decimal is a breaking change to existing test fixtures (45000.0 literals), not purely additive"
+  - "main.py needs a lifespan hook for asyncpg pool; test_health.py may need `with TestClient(app) as client:`"
+  - "product_variants -> stock_movements is ON DELETE RESTRICT; delete is explicitly out of scope for this change"
+  - "existing openspec/specs/inventory-schema/spec.md already specifies ledger behavior at the DB/schema level -- sdd-spec must scope stock-movement-recording to the backend APPLICATION level to avoid duplicating those requirements"
+
+next_recommended: sdd-spec and sdd-design (parallelizable per dependency graph)
+
+notes: |
+  Builds on archived supabase-schema (real Postgres schema, verified end-to-end)
+  and public-catalog-screens (frontend reads catalog_* views directly, UNCHANGED
+  and out of scope for this backend-only change). Public catalog behavior must
+  not change. No admin UI or auth in this change -- both are separate, later
+  changes this backend work unblocks.
