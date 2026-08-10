@@ -195,3 +195,115 @@ None. The architecture test's `asyncpg` ban required no source changes —
 
 ### Status
 9/9 Phase 2 tasks complete. Ready for sdd-verify on this PR2 slice.
+
+## Batch: PR3 — Phase 3 Stock Domain + Phase 4 Verification
+
+**Branch**: `pr3-stock-domain` (branched from `main`, which already has PR1's
+domain realignment AND PR2's Postgres adapter merged)
+**Mode**: Strict TDD
+**Scope**: Phase 3 tasks (3.1-3.11, stock domain) + Phase 4 tasks (4.1-4.3,
+cross-cutting verification). This is the final slice of the
+`products-postgres-adapter` change — after this merges the whole change is
+apply-complete. Docker Desktop + local Supabase were running throughout
+(`DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`), so every
+integration test below ran against real Postgres, not mocks.
+
+### Completed Tasks (11/11 Phase 3 + 3/3 Phase 4)
+
+- [x] 3.1 [RED] Created `tests/unit/stock/test_stock_movement_domain.py`: sign-direction per `MovementType` (all 5 types), non-zero delta, blank-reason rejected, immutability (`FrozenInstanceError`), value-based equality
+- [x] 3.2 [GREEN] Created `stock/domain/stock_movement.py`: `MovementType` StrEnum (`restock`/`sale`/`return`/`breakage`/`adjustment`), `@dataclass(frozen=True) StockMovement`, `__post_init__` mirrors `stock_movements_sign_direction_check` exactly
+- [x] 3.3 [GREEN] Created `stock/application/repository.py`: `StockMovementRepository` Protocol with exactly one method, `record(movement) -> None` — RED-first port-shape test (`vars(StockMovementRepository)` public members == `{"record"}`) proves no update/delete can be added silently
+- [x] 3.4 [GREEN] Created `stock/application/stock_level_reader.py`: `StockLevelReader.quantity_on_hand(variant_id)`; `stock/application/exceptions.py`: `UnknownVariantError` — both RED-first with their own tests
+- [x] 3.5 [RED] Created `tests/unit/stock/test_record_stock_movement_use_case.py`: valid movement recorded, unknown type and wrong-sign rejected before persistence (proved via `repository.recorded == []` after the raise)
+- [x] 3.6 [GREEN] Created `stock/application/record_stock_movement.py`: `RecordStockMovementUseCase`, `str -> MovementType` (`ValueError` on unknown) resolved BEFORE constructing the entity; plus `stock/infrastructure/in_memory_stock_movement_repository.py` and `in_memory_stock_level_reader.py` test-double adapters
+- [x] 3.7 [RED] Created `tests/unit/stock/test_register_stocked_product_use_case.py`: orchestrates `ProductRepository` + `StockMovementRepository`, zero-stock registration succeeds (empty `initial_movements` default), multiple initial movements all recorded in order
+- [x] 3.8 [GREEN] Created `stock/application/register_stocked_product.py`: `RegisterStockedProductUseCase(products, movements)`, `execute(product, initial_movements=())`
+- [x] 3.9 [RED] Created `tests/integration/db/test_stock_movement_repository.py`: insert-only row persistence, `variant_stock_levels` sum via `PostgresStockLevelReader` matches recorded movements (+10 restock, -3 sale = 7), zero-movement variant reads 0, unknown-variant FK violation -> `UnknownVariantError` (+ zero-row proof), direct `UPDATE` against `stock_movements` rejected by the DB trigger
+- [x] 3.10 [GREEN] Created `stock/infrastructure/postgres_stock_movement_repository.py` (`record`, FK-violation translation scoped to `stock_movements_variant_id_fkey`, wrapped in the shared `transaction()` helper as a SAVEPOINT so a caller's enclosing transaction survives the failure) and `postgres_stock_level_reader.py` (`quantity_on_hand` via `coalesce(...,0)` over `variant_stock_levels`)
+- [x] 3.11 [RED->GREEN] Created `tests/integration/db/test_register_stocked_product_atomicity.py`: (a) successful registration commits product+variant+movement together (via `db_conn`/SAVEPOINT — see Deviations), (b) a failing second movement (unknown `variant_id`) after a successful first movement leaves ZERO rows in `products`, `product_variants`, AND `stock_movements` — driven through a real `transaction(pool)` BEGIN/ROLLBACK on `db_pool`
+- [x] 4.1 Confirmed `npx supabase status` reachable (local Docker Supabase already running for the whole session; `DB_URL` resolved from `npx supabase status`'s own output)
+- [x] 4.2 Ran full `pytest backend/tests -q`: **without `DB_URL`** -> `54 passed, 20 skipped` (all DB-touching tests skip cleanly, unit suite has zero Postgres dependency); **with `DB_URL` set** -> `74 passed, 0 skipped, 0 failed`
+- [x] 4.3 Confirmed `test_domain_boundary.py` passes with `asyncpg` banned in every domain's `domain/` layer — **zero further edits needed**, exactly as predicted: `"stock"` was already in `DOMAINS` (PR1) and `"asyncpg"` was already in `BANNED_MODULES` (PR2), so `stock/domain/stock_movement.py` was covered by construction the moment it existed. Also manually verified the `stock -> products` dependency direction: `grep` for `gcell.stock` imports inside `products/` found zero matches; `grep` for `gcell.products` imports inside `stock/` found exactly one file, `register_stocked_product.py` (the legal direction).
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `backend/src/gcell/stock/domain/stock_movement.py` | Created | `MovementType` StrEnum; `StockMovement` frozen dataclass; `__post_init__` enforces non-zero delta, sign-direction per type, non-blank `reason` |
+| `backend/src/gcell/stock/application/repository.py` | Created | `StockMovementRepository` Protocol — exactly one method, `record` |
+| `backend/src/gcell/stock/application/stock_level_reader.py` | Created | `StockLevelReader` Protocol — exactly one method, `quantity_on_hand` |
+| `backend/src/gcell/stock/application/exceptions.py` | Created | `UnknownVariantError(variant_id)` |
+| `backend/src/gcell/stock/application/record_stock_movement.py` | Created | `RecordStockMovementUseCase`: str->enum resolution, entity construction, `repository.record` |
+| `backend/src/gcell/stock/application/register_stocked_product.py` | Created | `RegisterStockedProductUseCase`: orchestrates `ProductRepository.add` + `StockMovementRepository.record` per initial movement; no transaction ownership (caller-owned) |
+| `backend/src/gcell/stock/infrastructure/in_memory_stock_movement_repository.py` | Created | `InMemoryStockMovementRepository` — `recorded: list[StockMovement]` |
+| `backend/src/gcell/stock/infrastructure/in_memory_stock_level_reader.py` | Created | `InMemoryStockLevelReader` — sums an in-memory movement list per `variant_id` |
+| `backend/src/gcell/stock/infrastructure/postgres_stock_movement_repository.py` | Created | `PostgresStockMovementRepository(conn).record`; `ForeignKeyViolationError` on `stock_movements_variant_id_fkey` -> `UnknownVariantError`; INSERT wrapped in `transaction(self._conn)` (SAVEPOINT) so a caller's enclosing transaction survives a translated failure |
+| `backend/src/gcell/stock/infrastructure/postgres_stock_level_reader.py` | Created | `PostgresStockLevelReader(conn).quantity_on_hand` via `coalesce((SELECT ... FROM variant_stock_levels WHERE variant_id=$1), 0)` |
+| `backend/tests/unit/stock/test_stock_movement_domain.py` | Created | 16 tests: sign-direction (all 5 types x correct/incorrect sign), zero-delta rejection, reason blank/present/default, immutability, value equality |
+| `backend/tests/unit/stock/test_stock_movement_repository_port.py` | Created | Port-shape proof: public members == `{"record"}` |
+| `backend/tests/unit/stock/test_stock_level_reader_port.py` | Created | Port-shape proof: public members == `{"quantity_on_hand"}` |
+| `backend/tests/unit/stock/test_stock_exceptions.py` | Created | `UnknownVariantError` carries `variant_id`, message contains it |
+| `backend/tests/unit/stock/test_record_stock_movement_use_case.py` | Created | 4 tests: valid record, unknown type rejected pre-persistence, wrong-sign rejected pre-persistence, optional `reason` |
+| `backend/tests/unit/stock/test_register_stocked_product_use_case.py` | Created | 3 tests: zero-stock succeeds with no movements recorded, single initial movement recorded, multiple initial movements recorded in order |
+| `backend/tests/integration/db/test_stock_movement_repository.py` | Created | 5 tests: row persistence, ledger-sum-matches-reader, zero-movement variant reads 0, unknown-variant FK->`UnknownVariantError` (+zero-row proof), direct `UPDATE` rejected by trigger |
+| `backend/tests/integration/db/test_register_stocked_product_atomicity.py` | Created | 2 tests: successful cross-domain commit (via `db_conn` SAVEPOINT), failed second movement leaves zero rows across `products`/`product_variants`/`stock_movements` (via real `transaction(db_pool)` BEGIN/ROLLBACK) |
+| `openspec/changes/products-postgres-adapter/tasks.md` | Modified | Phase 3 tasks 3.1-3.11 and Phase 4 tasks 4.1-4.3 marked `[x]`; Notes item 4 added documenting the append-only cleanup constraint discovery |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | RED | GREEN |
+|------|-----------|-------|-----|-------|
+| 3.1/3.2 | `test_stock_movement_domain.py` | Unit | ✅ `ModuleNotFoundError: gcell.stock.domain.stock_movement` | ✅ 16/16 passed |
+| 3.3 | `test_stock_movement_repository_port.py` | Unit | ✅ `ModuleNotFoundError: gcell.stock.application.repository` | ✅ 1/1 passed |
+| 3.4 | `test_stock_level_reader_port.py` + `test_stock_exceptions.py` | Unit | ✅ both `ModuleNotFoundError` | ✅ 2/2 passed |
+| 3.5/3.6 | `test_record_stock_movement_use_case.py` | Unit | ✅ `ModuleNotFoundError: gcell.stock.application.record_stock_movement` | ✅ 4/4 passed |
+| 3.7/3.8 | `test_register_stocked_product_use_case.py` | Unit | ✅ `ModuleNotFoundError: gcell.stock.application.register_stocked_product` | ✅ 3/3 passed |
+| 3.9/3.10 | `test_stock_movement_repository.py` | Integration (DB) | ✅ `ModuleNotFoundError: gcell.stock.infrastructure.postgres_stock_level_reader` | ✅ 5/5 passed (one intermediate failure fixed mid-cycle — see Issues Found) |
+| 3.11 | `test_register_stocked_product_atomicity.py` | Integration (DB) | ✅ written against fully-existing infra (no new production code needed); first run failed on cleanup (see Issues Found), not on the assertions | ✅ 2/2 passed after harness fix |
+
+### Test Summary
+- **Total tests written**: 33 new — `pytest backend/tests/unit/stock -q` -> `26 passed` (16 domain + 1 repo-port-shape + 1 reader-port-shape + 1 exception + 4 record-use-case + 3 register-use-case), `pytest backend/tests/integration/db/test_stock_movement_repository.py backend/tests/integration/db/test_register_stocked_product_atomicity.py -q` -> `7 passed` (5 repository/reader + 2 atomicity)
+- **Total tests passing without `DB_URL`**: `54 passed, 20 skipped` (full `backend/tests`)
+- **Total tests passing with `DB_URL` set to local Supabase**: `74 passed, 0 skipped, 0 failed` (full `backend/tests`)
+- **Layers used**: Unit (domain invariants, port shapes, use cases with in-memory doubles), Integration/DB (Postgres adapters, cross-domain atomicity), Architecture (`domain_boundary`, unchanged)
+- **Approval tests**: None — no refactoring-only tasks in this batch
+- **Pure functions created**: `StockMovement.__post_init__`'s sign-direction check (data-driven via `_POSITIVE_ONLY`/`_NEGATIVE_ONLY` frozensets, no branching duplication across the 5 movement types)
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres uv run --project backend pytest backend/tests/unit/stock backend/tests/integration/db/test_stock_movement_repository.py backend/tests/integration/db/test_register_stocked_product_atomicity.py -q` -> `33 passed` |
+| Runtime harness command/scenario and exact result | `npx supabase status` confirmed reachable local Postgres; full suite `DB_URL=... uv run --project backend pytest backend/tests -q` -> `74 passed, 0 skipped, 0 failed` |
+| Rollback boundary | Revert `backend/src/gcell/stock/` tree entirely (domain/application/infrastructure), `backend/tests/unit/stock/`, `backend/tests/integration/db/test_stock_movement_repository.py`, `backend/tests/integration/db/test_register_stocked_product_atomicity.py` — depends only on PR1/PR2's `ProductRepository` port and `transaction()` helper, zero edits to `products/` or `shared/` source in this batch |
+
+`ruff check backend/src backend/tests` -> `All checks passed!`
+
+### Deviations from Design
+
+1. **`test_register_stocked_product_atomicity.py`'s success-path harness**: design/tasks implied driving BOTH the success and failure scenarios "through `transaction(pool)`" with a real Pool-level commit. Mid-apply, discovered `stock_movements` is append-only even for a superuser connection (`BEFORE UPDATE OR DELETE` trigger, unconditional) AND `variant_id` has `ON DELETE RESTRICT` from `product_variants` — so a genuinely COMMITTED movement row has **no valid cleanup statement** (`DELETE`/`UPDATE` both rejected by the trigger; the referencing variant/product can't be deleted either because of the RESTRICT FK). Attempting `db_pool` + manual `DELETE` cleanup for the success test failed with `RaiseError: stock_movements is append-only: DELETE is not permitted`. Fixed by using `db_conn` (SAVEPOINT via nested `transaction(db_conn)`) for the success-path test instead — this still exercises the exact same `RegisterStockedProductUseCase` + shared-connection pattern and proves cross-domain commit correctness, while `db_conn`'s teardown is a plain `ROLLBACK` (transaction control, not a DML statement), so the append-only trigger never fires and zero rows survive. The REQUIRED spec scenario ("Failure leaves no partial rows") still uses a genuine `transaction(db_pool)` BEGIN/ROLLBACK, since a rolled-back transaction commits nothing and needs no cleanup at all. The Pool-branch's real BEGIN/COMMIT mechanics are already proven generically and independently by PR2's `test_postgres_transaction.py::test_transaction_with_pool_commits_on_clean_exit`. Documented as Notes item 4 in `tasks.md`.
+2. **`PostgresStockMovementRepository.record` wraps its INSERT in `transaction(self._conn)`** (a detail not spelled out in design's SQL section, but required by the same principle design already established for `PostgresProductRepository.add`): a failed statement aborts Postgres's ENTIRE enclosing transaction, so without the nested SAVEPOINT, a caller's `db_conn` (or a composition root's already-open transaction) would become unusable for any further statement after a translated `UnknownVariantError` — confirmed by an `InFailedSQLTransactionError` on the very first attempt at the unknown-variant integration test, fixed by mirroring the products adapter's existing pattern exactly.
+
+No other deviations — `StockMovement`, `StockMovementRepository`, `StockLevelReader`, `RecordStockMovementUseCase`, and `RegisterStockedProductUseCase` all match design's `Interfaces / Contracts` section exactly, including `record(movement) -> None` (not `-> StockMovement`/id-returning, since `stock_movements.id` is DB-assigned and never consumed by any port caller in this change).
+
+### Issues Found
+
+1. First run of `test_stock_movement_repository.py::test_record_against_unknown_variant_raises_unknown_variant_error` failed with `InFailedSQLTransactionError` on its own follow-up verification query — root-caused to the missing SAVEPOINT wrap described in Deviations item 2 above, fixed immediately, not a pre-existing failure.
+2. First run of `test_register_stocked_product_atomicity.py`'s success-path test failed its `finally`-block cleanup with `RaiseError: stock_movements is append-only: DELETE is not permitted` — root-caused to the append-only trigger + RESTRICT FK combination described in Deviations item 1 above, fixed by switching the harness from `db_pool`+manual-cleanup to `db_conn`+SAVEPOINT.
+
+Both were caught and fixed within this same batch before marking the tasks complete — no residual test-DB pollution from either failed first attempt (the FK-violation attempt never inserted a row in the first place; the cleanup-failure attempt's product/variant/movement rows are erased by `db_conn`'s fixture-level `ROLLBACK` regardless of the mid-test `DELETE` failure, since `ROLLBACK` discards the whole transaction unconditionally).
+
+### Workload / PR Boundary
+- Mode: stacked-to-main chained PR slice (PR3 of 3 — FINAL slice)
+- Current work unit: Work Unit 3 — "Stock domain: movement, use cases, Postgres adapters"
+- Boundary: starts from `main` (post PR1+PR2 merge), ends at Phase 3 tasks 3.1-3.11 AND Phase 4 tasks 4.1-4.3 complete — nothing remains in this change after this slice merges
+- Estimated review budget impact: within the "Stock domain" work unit's forecasted line count; zero edits to `products/` or `shared/` source (only new `stock/` files + new tests), keeping the diff focused per the chain strategy
+
+### Remaining Tasks
+None. All 26 tasks across Phase 1-4 are complete (`1.1`-`1.7`, `2.1`-`2.9`, `3.1`-`3.11`, `4.1`-`4.3`).
+
+### Status
+11/11 Phase 3 tasks + 3/3 Phase 4 tasks complete (26/26 total across the whole
+`products-postgres-adapter` change). Ready for `sdd-verify` on this PR3 slice
+— and, once PR3 merges to `main`, the whole change is apply-complete and
+ready for a change-level `sdd-verify` pass.

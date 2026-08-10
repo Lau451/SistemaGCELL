@@ -48,26 +48,27 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Stock Domain (PR3)
 
-- [ ] 3.1 [RED] Create `tests/unit/stock/test_stock_movement_domain.py`: sign-direction per `MovementType`, non-zero delta, blank-reason rejected
-- [ ] 3.2 [GREEN] Create `stock/domain/stock_movement.py`: `MovementType` StrEnum, `@dataclass(frozen=True) StockMovement`, `__post_init__` mirrors `stock_movements_sign_direction_check`
-- [ ] 3.3 [GREEN] Create `stock/application/repository.py`: `StockMovementRepository` Protocol with exactly one method, `record`
-- [ ] 3.4 [GREEN] Create `stock/application/stock_level_reader.py`: `StockLevelReader.quantity_on_hand(variant_id)`; `stock/application/exceptions.py`: `UnknownVariantError`
-- [ ] 3.5 [RED] Create `tests/unit/stock/test_record_stock_movement_use_case.py`: valid movement recorded, unknown type and wrong-sign rejected before persistence
-- [ ] 3.6 [GREEN] Create `stock/application/record_stock_movement.py`: `RecordStockMovementUseCase`, str -> `MovementType` (`ValueError` on unknown), plus in-memory test-double repos
-- [ ] 3.7 [RED] Create `tests/unit/stock/test_register_stocked_product_use_case.py`: orchestrates `ProductRepository` + `StockMovementRepository`, zero-stock registration succeeds
-- [ ] 3.8 [GREEN] Create `stock/application/register_stocked_product.py`: `RegisterStockedProductUseCase`
-- [ ] 3.9 [RED] Create `tests/integration/db/test_stock_movement_repository.py`: insert-only, ledger reflects movements, `variant_stock_levels` sum matches
-- [ ] 3.10 [GREEN] Create `stock/infrastructure/postgres_stock_movement_repository.py` and `postgres_stock_level_reader.py`
-- [ ] 3.11 [RED->GREEN] Create `tests/integration/db/test_register_stocked_product_atomicity.py`: failing second variant/movement leaves zero product/variant/movement rows, driven through `transaction(pool)`
+- [x] 3.1 [RED] Create `tests/unit/stock/test_stock_movement_domain.py`: sign-direction per `MovementType`, non-zero delta, blank-reason rejected
+- [x] 3.2 [GREEN] Create `stock/domain/stock_movement.py`: `MovementType` StrEnum, `@dataclass(frozen=True) StockMovement`, `__post_init__` mirrors `stock_movements_sign_direction_check`
+- [x] 3.3 [GREEN] Create `stock/application/repository.py`: `StockMovementRepository` Protocol with exactly one method, `record`
+- [x] 3.4 [GREEN] Create `stock/application/stock_level_reader.py`: `StockLevelReader.quantity_on_hand(variant_id)`; `stock/application/exceptions.py`: `UnknownVariantError`
+- [x] 3.5 [RED] Create `tests/unit/stock/test_record_stock_movement_use_case.py`: valid movement recorded, unknown type and wrong-sign rejected before persistence
+- [x] 3.6 [GREEN] Create `stock/application/record_stock_movement.py`: `RecordStockMovementUseCase`, str -> `MovementType` (`ValueError` on unknown), plus in-memory test-double repos
+- [x] 3.7 [RED] Create `tests/unit/stock/test_register_stocked_product_use_case.py`: orchestrates `ProductRepository` + `StockMovementRepository`, zero-stock registration succeeds
+- [x] 3.8 [GREEN] Create `stock/application/register_stocked_product.py`: `RegisterStockedProductUseCase`
+- [x] 3.9 [RED] Create `tests/integration/db/test_stock_movement_repository.py`: insert-only, ledger reflects movements, `variant_stock_levels` sum matches
+- [x] 3.10 [GREEN] Create `stock/infrastructure/postgres_stock_movement_repository.py` and `postgres_stock_level_reader.py`
+- [x] 3.11 [RED->GREEN] Create `tests/integration/db/test_register_stocked_product_atomicity.py`: failing second variant/movement leaves zero product/variant/movement rows, driven through `transaction(pool)`
 
 ## Phase 4: Verification
 
-- [ ] 4.1 Confirm `npx supabase status` reachable (else `npx supabase start`) before running `backend/tests/integration/db`
-- [ ] 4.2 Run full `pytest backend/tests -q`: unit suite green without `DB_URL`, integration suite green with local Postgres
-- [ ] 4.3 Confirm `test_domain_boundary.py` passes with `asyncpg` banned in every domain's `domain/` layer
+- [x] 4.1 Confirm `npx supabase status` reachable (else `npx supabase start`) before running `backend/tests/integration/db`
+- [x] 4.2 Run full `pytest backend/tests -q`: unit suite green without `DB_URL`, integration suite green with local Postgres
+- [x] 4.3 Confirm `test_domain_boundary.py` passes with `asyncpg` banned in every domain's `domain/` layer
 
 ## Notes (Open Questions Resolved)
 
 1. `application/` banned-import AST sweep: deferred, out of scope — spec only requires the `domain/` boundary; do not widen this change.
 2. `Product.description`: not modeled — spec's Product fields are `id`/`slug`/`name`/`model` only; column stays nullable and unwritten.
 3. `StockLevelReader` bulk read (`dict[UUID, int]`): confirmed out of scope — single-variant `quantity_on_hand` only, per design.
+4. `test_register_stocked_product_atomicity.py`'s success-path test uses `db_conn` (SAVEPOINT), not `db_pool` with a real commit as task 3.11's wording implies — discovered mid-apply that `stock_movements` is append-only even for a superuser connection (`BEFORE UPDATE OR DELETE` trigger, unconditional) AND `variant_id` has `ON DELETE RESTRICT`, so a genuinely committed movement row has no valid cleanup statement and would permanently pollute the local dev DB. The failure/rollback path (the scenario spec actually requires) still uses `db_pool` with a real `transaction(pool)` BEGIN/ROLLBACK, since a rolled-back transaction commits nothing and needs no cleanup. The `transaction()` helper's real-Pool BEGIN/COMMIT mechanics are already proven generically by PR2's `test_postgres_transaction.py`.
