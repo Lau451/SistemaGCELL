@@ -14,8 +14,39 @@ dag:
   design: complete
   tasks: complete
   apply: complete
-  verify: pending
+  verify: complete
   archive: pending
+
+verify_result:
+  verdict: pass_with_warnings
+  independently_verified:
+    - "supabase db reset from empty -- all 4 migrations + seed apply cleanly"
+    - "rls_checks.sql re-run twice via docker exec -- 14 PASS + ALL ASSERTIONS PASSED"
+    - "14 additional manual spot-checks incl. 3 real HTTP calls against local Storage API (upload/fetch/anon-write-rejected)"
+    - "anon denied cost read (permission denied); anon reads catalog_products/catalog_variants with in_stock, no cost column"
+    - "12 requirements / 19 scenarios across 4 spec files mapped to passing runtime evidence, read from migration SQL directly"
+    - "frontend 7/7, backend 9/9 regression"
+  issues:
+    - severity: WARNING
+      status: not_addressed
+      description: >
+        apply-progress.md claims "18 PASS notices" from the GREEN run; script actually
+        produces 14 PASS: lines + 1 summary (15 total) -- documentation-only inaccuracy,
+        state.yaml's "15/15" is correct.
+    - severity: WARNING
+      status: not_addressed
+      description: >
+        product_images.variant_id has an inline `references product_variants (id)` creating
+        a redundant implicit simple FK alongside the documented composite FK (design
+        Decision 10). Harmless (fully subsumed by the composite FK) but undocumented.
+    - severity: SUGGESTION
+      description: "588-line diff vs 400 budget -- already accepted as size:exception, no action"
+    - severity: SUGGESTION
+      description: "Storage bucket public-read now has real HTTP evidence, not just SQL-config checks -- good pattern to repeat"
+  critical_issues: none
+  evidence_hashes:
+    test_output_hash: "sha256:99237960b8d2a4fcf6a357d1d4b184755161ea265c381be4d72bbf01932703f5"
+    build_output_hash: "sha256:a7fd34f85d6cb7e54b5d0d52e0569835ca2e4e4408fa3f9bc81bdebe322c00a1"
 
 apply_result:
   branch: supabase-schema (merged fast-forward into main at 266097a, branch deleted)
@@ -70,7 +101,7 @@ known_conflicts:
     migrations/ holds no schema SQL. This change supersedes it — sdd-spec must author a delta
     that explicitly modifies/retires that requirement, not just add new ones.
 
-next_recommended: sdd-verify
+next_recommended: sdd-archive (2 cosmetic WARNINGs, no CRITICAL blockers -- orchestrator to confirm with user whether to fix first)
 
 notes: |
   Builds on archived initial-scaffolding (supabase init only, no schema).
