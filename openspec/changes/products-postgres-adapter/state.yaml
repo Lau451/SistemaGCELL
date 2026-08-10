@@ -32,6 +32,21 @@ review_workload_decision:
   chain_strategy: stacked-to-main
   delivery_strategy: ask-on-risk
   decision_needed_before_apply: true
+  user_confirmed: "3 chained PRs, stacked-to-main"
+
+pr_progress:
+  pr1_domain_realignment:
+    status: complete
+    tasks: "1.1-1.7 (7/7)"
+    tests: "24/24 passing -- independently re-run by orchestrator"
+    actual_changed_lines: 359
+    budget_exception: "none needed -- within the 400-line budget"
+    verified_by_orchestrator:
+      - "read product.py in full: id-based __eq__/__hash__ correct, money validation (Decimal, finite, non-negative, scale<=2) matches numeric(10,2), slug regex matches DB CHECK constraint"
+      - "ruff check clean"
+      - "architecture boundary test (domain/ imports only stdlib) still passes"
+    sdd_attempt_ledger: "settled (state: complete, no reset needed -- within acquired 2000-line budget)"
+    merged_to_main: 109bf71
 
 design_findings_verified_by_orchestrator:
   - "confirmed 'stock' already present in DOMAINS list in backend/tests/architecture/test_domain_boundary.py -- only BANNED_MODULES needs asyncpg added"
