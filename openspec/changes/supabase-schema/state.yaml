@@ -13,9 +13,31 @@ dag:
   specs: complete
   design: complete
   tasks: complete
-  apply: pending
+  apply: complete
   verify: pending
   archive: pending
+
+apply_result:
+  branch: supabase-schema (merged fast-forward into main at 266097a, branch deleted)
+  tasks: "24/24 complete"
+  actual_changed_lines: 588
+  budget_exception: >
+    588 vs 400-line budget (~47% over), driven almost entirely by the 324-line RED
+    assertion script (supabase/tests/rls_checks.sql), not schema/security logic.
+    User accepted as size:exception after ask-on-risk stop (declined retroactive
+    2-PR split as artificial rework given interdependency between migrations and
+    the verification script).
+  tdd_evidence: >
+    RED confirmed: rls_checks.sql run via docker exec against empty schema failed
+    with "relation products does not exist". GREEN confirmed: same script after
+    supabase db reset -> ALL ASSERTIONS PASSED (15/15), independently re-run by
+    the orchestrator (not just trusted from agent's report).
+  regression: "frontend 7/7, backend 9/9 -- independently re-run by orchestrator, unchanged app code"
+  sdd_attempt_ledger: settled (state: complete, outcome: passed)
+  deviations_from_design:
+    - "stock_movements.id uses bigint generated always as identity (not specified in design; internal-only table)"
+    - "catalog_variants.phone_model implemented as join to products.model, matching design's Data Flow column list"
+  environment_note: "psql not installed on this Windows host; docker exec into supabase_db_SistemaGCELL is the working invocation for local psql access going forward"
 
 phases_completed:
   - explore
@@ -48,7 +70,7 @@ known_conflicts:
     migrations/ holds no schema SQL. This change supersedes it — sdd-spec must author a delta
     that explicitly modifies/retires that requirement, not just add new ones.
 
-next_recommended: sdd-apply (single PR, no chaining needed)
+next_recommended: sdd-verify
 
 notes: |
   Builds on archived initial-scaffolding (supabase init only, no schema).
