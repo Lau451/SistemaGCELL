@@ -1,0 +1,45 @@
+change: public-catalog-screens
+schema: spec-driven-state/v1
+
+session_preflight:
+  pace: interactive
+  artifact_store: hybrid
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+  review_budget_lines: 400
+
+dag:
+  proposal: complete
+  specs: pending
+  design: pending
+  tasks: pending
+  apply: pending
+  verify: pending
+  archive: pending
+
+phases_completed:
+  - explore
+  - propose
+
+product_decisions:
+  scope: "Full — listing + detail + color picker + search/filters/pagination (user overrode Medium recommendation, anticipates catalog growth)"
+  caching_model: "classic ISR (export const revalidate = N), not Next 16 Cache Components — lower risk on new feature"
+  data_access: "direct Supabase reads from Server Components via @supabase/ssr, anon key, catalog_* views only — carried forward from supabase-schema, not re-litigated"
+  landing_route: "/ IS the listing (accepted default assumption)"
+  freshness: "revalidate = 300 (5 min)"
+  listing_price_display: "\"from {min}\" when variants differ in price"
+  out_of_stock_display: "visible but disabled, not hidden"
+  filter_source: "derived from catalog data, not a curated fixed list (accepted default assumption)"
+
+known_risks:
+  - "400-line review budget risk flagged High in proposal — pre-suggested 3 stacked slices (client+env+config / listing+detail+picker / route handler+search). sdd-tasks owns the real forecast."
+  - "@supabase/ssr vs Next 16 async cookies() compatibility postdates training data — re-verify at install time"
+  - "Empty catalog on first real (non-Docker) deploy is expected — empty-state UI is in-scope success criterion"
+
+next_recommended: sdd-spec and sdd-design (parallelizable per dependency graph)
+
+notes: |
+  Builds on archived supabase-schema (catalog_* views, RLS, product-photos bucket
+  all live and verified in local Docker). frontend/src/app/ is still unmodified
+  create-next-app scaffold going into this change — no route groups exist yet.
+  Backend FastAPI explicitly untouched.
