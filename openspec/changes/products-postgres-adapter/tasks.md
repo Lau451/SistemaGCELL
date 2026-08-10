@@ -26,13 +26,13 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: Domain Realignment (PR1)
 
-- [ ] 1.1 [RED] Rewrite `test_product_domain.py`: id-based eq/hash, Decimal price/cost, slug/model/color invariants
-- [ ] 1.2 [GREEN] Rewrite `products/domain/product.py`: `@dataclass(eq=False)` `Product{id,slug,name,model,variants}` / `ProductVariant{id,color,price:Decimal,cost:Decimal}`; explicit `__eq__`/`__hash__` on `id`; slug regex+length, Decimal-type/finite/`>=0`/scale-2 checks
-- [ ] 1.3 [RED] Update `test_register_product_use_case.py` for async `execute`
-- [ ] 1.4 [GREEN] Make `products/application/repository.py` async: `add`/`get_by_id`/`get_by_slug`/`list_all`, drop `get_by_name`
-- [ ] 1.5 [GREEN] Create `products/application/exceptions.py`: `DuplicateProductSlugError`
-- [ ] 1.6 [GREEN] Update `register_product.py`: async, remove `get_by_slug` pre-check (constraint translation moves to infra)
-- [ ] 1.7 [GREEN] Update `in_memory_product_repository.py`: async, id-keyed dict + slug index, raises `DuplicateProductSlugError`
+- [x] 1.1 [RED] Rewrite `test_product_domain.py`: id-based eq/hash, Decimal price/cost, slug/model/color invariants
+- [x] 1.2 [GREEN] Rewrite `products/domain/product.py`: `@dataclass(eq=False)` `Product{id,slug,name,model,variants}` / `ProductVariant{id,color,price:Decimal,cost:Decimal}`; explicit `__eq__`/`__hash__` on `id`; slug regex+length, Decimal-type/finite/`>=0`/scale-2 checks
+- [x] 1.3 [RED] Update `test_register_product_use_case.py` for async `execute`
+- [x] 1.4 [GREEN] Make `products/application/repository.py` async: `add`/`get_by_id`/`get_by_slug`/`list_all`, drop `get_by_name`
+- [x] 1.5 [GREEN] Create `products/application/exceptions.py`: `DuplicateProductSlugError`
+- [x] 1.6 [GREEN] Update `register_product.py`: async, remove `get_by_slug` pre-check (constraint translation moves to infra)
+- [x] 1.7 [GREEN] Update `in_memory_product_repository.py`: async, id-keyed dict + slug index, raises `DuplicateProductSlugError`
 
 ## Phase 2: Products Postgres Adapter (PR2)
 

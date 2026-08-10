@@ -10,15 +10,16 @@ from gcell.products.domain.product import Product
 class RegisterProductUseCase:
     """Registers a `Product` through the `ProductRepository` port.
 
-    Kept intentionally small for this scaffold: it exists to prove the
-    application layer wires domain objects to a repository port without
-    depending on any framework or persistence technology.
+    Duplicate-slug detection is NOT pre-checked here (that would be a
+    TOCTOU-racy extra round trip that duplicates the rule in two places).
+    `repository.add` is the single source of truth: it raises
+    `DuplicateProductSlugError` on a slug conflict, whether translated from a
+    real DB constraint (Postgres adapter) or checked directly (in-memory
+    adapter) — see `design.md` "duplicate slug via constraint translation".
     """
 
     repository: ProductRepository
 
-    def execute(self, product: Product) -> Product:
-        if self.repository.get_by_name(product.name) is not None:
-            raise ValueError(f"Product '{product.name}' is already registered")
-        self.repository.add(product)
+    async def execute(self, product: Product) -> Product:
+        await self.repository.add(product)
         return product
