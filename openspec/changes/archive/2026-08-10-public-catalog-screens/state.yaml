@@ -15,7 +15,7 @@ dag:
   tasks: complete
   apply: complete
   verify: complete
-  archive: pending
+  archive: complete
 
 verify_result:
   verdict: pass_with_warnings
@@ -131,7 +131,7 @@ known_risks:
   - "@supabase/ssr vs Next 16 async cookies() compatibility postdates training data — re-verify at install time"
   - "Empty catalog on first real (non-Docker) deploy is expected — empty-state UI is in-scope success criterion"
 
-next_recommended: sdd-archive (WARNING was Engram-mirror drift only, resolved via topic_key upsert -- no code change needed)
+next_recommended: none (change is complete and archived)
 
 notes: |
   Builds on archived supabase-schema (catalog_* views, RLS, product-photos bucket
