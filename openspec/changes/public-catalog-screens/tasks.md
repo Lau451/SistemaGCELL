@@ -26,23 +26,23 @@ Chain strategy: pending
 
 ## Phase 1: Foundation (PR 1) — pure domain, Supabase clients, config
 
-- [ ] 1.1 RED `lib/catalog/columns.test.ts`: column constants match view columns; no `cost`/`quantity` token.
-- [ ] 1.2 GREEN `lib/catalog/columns.ts`: `CATALOG_RELATIONS` allowlist + 3 column constants.
-- [ ] 1.3 Create `lib/catalog/types.ts`: row types matching views exactly (no test, no behavior).
-- [ ] 1.4 RED `lib/catalog/query-params.test.ts`: `sanitizeSearchTerm` strips each PostgREST metachar class; `q` >80 chars truncated; `page`/`limit` boundary cases (0, -1, "abc", 999).
-- [ ] 1.5 GREEN `lib/catalog/query-params.ts`.
-- [ ] 1.6 RED `lib/catalog/derive.test.ts`: price-from (equal vs differing prices); hero-image fallback chain (null-variant image -> default variant's first image -> placeholder).
-- [ ] 1.7 GREEN `lib/catalog/derive.ts`.
-- [ ] 1.8 RED `lib/catalog/storage-url.test.ts`: `storage_path` -> public URL, local + hosted.
-- [ ] 1.9 GREEN `lib/catalog/storage-url.ts`.
-- [ ] 1.10 RED `lib/supabase/image-pattern.test.ts`: `buildProductPhotoPattern` for `http://127.0.0.1:54321` and `https://<ref>.supabase.co`; `search` pinned `""`.
-- [ ] 1.11 GREEN `lib/supabase/image-pattern.ts`.
-- [ ] 1.12 Install `@supabase/ssr` + `server-only`; read installed package's cookie-adapter shape (`getAll`/`setAll` vs `get`/`set`/`remove`) before 1.14.
-- [ ] 1.13 Create `lib/supabase/env.ts`: validate `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY`.
-- [ ] 1.14 Create `lib/supabase/server.ts`: `createAnonCatalogClient` (sync, no `cookies()`) + `createRequestCatalogClient` (async, awaits `cookies()`), adapter shape per 1.12.
-- [ ] 1.15 Modify `next.config.ts`: `images.remotePatterns` via `buildProductPhotoPattern(env url)`.
-- [ ] 1.16 Create `.env.example`: two `NEXT_PUBLIC_*` vars only; confirm `.env.local` stays gitignored.
-- [ ] 1.17 Verify: `npm --prefix frontend test` (new suite green) + `npm --prefix frontend run build`.
+- [x] 1.1 RED `lib/catalog/columns.test.ts`: column constants match view columns; no `cost`/`quantity` token.
+- [x] 1.2 GREEN `lib/catalog/columns.ts`: `CATALOG_RELATIONS` allowlist + 3 column constants.
+- [x] 1.3 Create `lib/catalog/types.ts`: row types matching views exactly (no test, no behavior).
+- [x] 1.4 RED `lib/catalog/query-params.test.ts`: `sanitizeSearchTerm` strips each PostgREST metachar class; `q` >80 chars truncated; `page`/`limit` boundary cases (0, -1, "abc", 999).
+- [x] 1.5 GREEN `lib/catalog/query-params.ts`.
+- [x] 1.6 RED `lib/catalog/derive.test.ts`: price-from (equal vs differing prices); hero-image fallback chain (null-variant image -> default variant's first image -> placeholder).
+- [x] 1.7 GREEN `lib/catalog/derive.ts`.
+- [x] 1.8 RED `lib/catalog/storage-url.test.ts`: `storage_path` -> public URL, local + hosted.
+- [x] 1.9 GREEN `lib/catalog/storage-url.ts`.
+- [x] 1.10 RED `lib/supabase/image-pattern.test.ts`: `buildProductPhotoPattern` for `http://127.0.0.1:54321` and `https://<ref>.supabase.co`; `search` pinned `""`.
+- [x] 1.11 GREEN `lib/supabase/image-pattern.ts`.
+- [x] 1.12 Install `@supabase/ssr` + `server-only`; read installed package's cookie-adapter shape (`getAll`/`setAll` vs `get`/`set`/`remove`) before 1.14.
+- [x] 1.13 Create `lib/supabase/env.ts`: validate `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY`.
+- [x] 1.14 Create `lib/supabase/server.ts`: `createAnonCatalogClient` (sync, no `cookies()`) + `createRequestCatalogClient` (async, awaits `cookies()`), adapter shape per 1.12.
+- [x] 1.15 Modify `next.config.ts`: `images.remotePatterns` via `buildProductPhotoPattern(env url)`.
+- [x] 1.16 Create `.env.example`: two `NEXT_PUBLIC_*` vars only; confirm `.env.local` stays gitignored.
+- [x] 1.17 Verify: `npm --prefix frontend test` (new suite green) + `npm --prefix frontend run build`.
 
 ## Phase 2: Pages & UI (PR 2)
 
