@@ -18,7 +18,7 @@
 
 | Evidence | Value |
 |---|---|
-| Focused test command and exact result | `docker exec -i supabase_db_SistemaGCELL psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/rls_checks.sql` — exit 0, `ALL ASSERTIONS PASSED` (18 PASS notices) |
+| Focused test command and exact result | `docker exec -i supabase_db_SistemaGCELL psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/rls_checks.sql` — exit 0, `ALL ASSERTIONS PASSED` (14 PASS notices + 1 summary notice) |
 | Runtime harness command/scenario and exact result | `supabase db reset` (task 7.1) — Docker Desktop 29.6.2 confirmed running; all 4 CLI-timestamped migrations + `seed.sql` applied cleanly on a fresh container, no errors |
 | Rollback boundary | Delete `supabase/migrations/2026081000{0449,0453,0458,0502}_*.sql`, `supabase/seed.sql`, `supabase/tests/rls_checks.sql`, revert the `[storage.buckets.product-photos]` block in `supabase/config.toml`, then `supabase db reset` |
 

@@ -30,6 +30,8 @@ ALTER TABLE product_images ADD CONSTRAINT product_images_variant_fk
   FOREIGN KEY (product_id, variant_id) REFERENCES product_variants (product_id, id) ON DELETE CASCADE;
 ```
 
+`product_images.variant_id` must be declared as a plain `uuid` column with **no** inline `references product_variants (id)` — that would create a second, redundant simple FK alongside `product_images_variant_fk` above. The composite FK alone already enforces both "variant exists" and "variant belongs to this product" via `MATCH SIMPLE`.
+
 ## Data Flow
 
 ```

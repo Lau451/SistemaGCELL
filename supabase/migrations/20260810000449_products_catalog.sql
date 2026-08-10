@@ -57,7 +57,10 @@ create table product_images (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references products (id) on delete cascade,
   -- NULL variant_id = product hero image; non-NULL = colour-specific image.
-  variant_id uuid references product_variants (id) on delete cascade,
+  -- No inline `references` here: the composite FK below already enforces
+  -- variant_id exists (and belongs to the same product_id) via MATCH SIMPLE.
+  -- An extra simple FK on this column alone would be redundant.
+  variant_id uuid,
   storage_path text not null,
   alt_text text,
   sort_order integer not null default 0,
