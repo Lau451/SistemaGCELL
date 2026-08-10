@@ -5,16 +5,24 @@
  * (`default`, `revalidate`, `metadata`, ...) from a page module, so this
  * extra async helper lives in its own module that both pages import.
  *
- * This PR (Phase 2) renders the full first page of products with no
- * search/filter UI — that lands in Phase 3 alongside `/api/catalog`.
+ * Renders the server-fetched first page as `CatalogFilters`' initial
+ * props whenever the catalog has products — the ISR-rendered first page
+ * stays untouched (`revalidate = 300` is unaffected, nothing here calls
+ * `cookies()`) and `CatalogFilters` (PR3) takes over search/filter/
+ * pagination client-side via `/api/catalog`. Per design.md's Empty/
+ * No-Results/Error States table, filter UI is hidden for the
+ * `empty-catalog`/`error` states, so those still render the plain
+ * `CatalogListingView`.
  *
  * @see design.md "Data Flow", "Decision: No generateStaticParams; reads
- * never throw".
+ * never throw", "Empty / No-Results / Error States".
  */
-import type { ProductCardProps } from "@/components/catalog/product-card";
+import { CatalogFilters } from "@/components/catalog/catalog-filters";
 import { CatalogListingView } from "@/components/catalog/catalog-listing-view";
+import type { ProductCardProps } from "@/components/catalog/product-card";
 import { deriveListingCard } from "@/lib/catalog/derive";
 import {
+  getCatalogFilterOptions,
   listCatalogProducts,
   listImagesForProducts,
   listVariantsForProducts,
@@ -50,10 +58,12 @@ export async function CatalogListingPageContent() {
 
   const productIds = products.map((product) => product.id);
 
-  const [variantsResult, imagesResult] = await Promise.all([
-    listVariantsForProducts(client, productIds),
-    listImagesForProducts(client, productIds),
-  ]);
+  const [variantsResult, imagesResult, filterOptionsResult] =
+    await Promise.all([
+      listVariantsForProducts(client, productIds),
+      listImagesForProducts(client, productIds),
+      getCatalogFilterOptions(client),
+    ]);
 
   if (!variantsResult.ok || !imagesResult.ok) {
     return <CatalogListingView products={[]} emptyStateVariant="error" />;
@@ -87,5 +97,14 @@ export async function CatalogListingPageContent() {
     };
   });
 
-  return <CatalogListingView products={cards} />;
+  // Filter dropdown options are a non-fatal enhancement: if this query
+  // fails, the initial listing still renders and search-by-text still
+  // works through /api/catalog, just with empty model/color dropdowns.
+  const filterOptions = filterOptionsResult.ok
+    ? filterOptionsResult.data
+    : { models: [], colors: [] };
+
+  return (
+    <CatalogFilters initialItems={cards} initialFilters={filterOptions} />
+  );
 }

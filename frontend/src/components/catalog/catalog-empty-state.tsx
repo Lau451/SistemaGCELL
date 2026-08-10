@@ -9,6 +9,8 @@
  * @see design.md "Empty / No-Results / Error States"
  */
 
+import Link from "next/link";
+
 export type CatalogEmptyStateVariant = "empty-catalog" | "no-results" | "error";
 
 export interface CatalogEmptyStateProps {
@@ -48,20 +50,20 @@ export function CatalogEmptyState({ variant }: CatalogEmptyStateProps) {
       <h2 className="text-lg font-semibold">{copy.heading}</h2>
       <p className="text-muted-foreground max-w-md text-sm">{copy.body}</p>
       {variant === "no-results" && (
-        <a
+        <Link
           href="/catalog"
           className="text-primary mt-2 text-sm underline-offset-4 hover:underline"
         >
           Limpiar filtros
-        </a>
+        </Link>
       )}
       {variant === "error" && (
-        <a
+        <Link
           href="/"
           className="text-primary mt-2 text-sm underline-offset-4 hover:underline"
         >
           Reintentar
-        </a>
+        </Link>
       )}
     </div>
   );

@@ -70,19 +70,19 @@ Chain strategy: pending
 
 ## Phase 3: Search API (PR 3)
 
-- [ ] 3.1 Create `app/api/catalog/route.ts`: `GET` handler, `createRequestCatalogClient`, builders from 2.3, params via `query-params.ts`.
-- [ ] 3.2 RED handler tests (import `GET` + `NextRequest`): no-params -> first page; combined `q`+`model`+`color`+`page` narrows result; zero matches -> well-formed empty result.
-- [ ] 3.3 RED threat-matrix tests: each PostgREST metachar class stripped; `q` >80 truncated; `page=0/-1/abc`, `limit=999` -> `400 invalid_query`; unknown `model`/`color` -> `200` no-results; upstream failure -> `503 catalog_unavailable`.
-- [ ] 3.4 RED response test: no `cost`/quantity key in any successful response, including empty results.
-- [ ] 3.5 GREEN: implement `route.ts` until 3.2-3.4 pass; set `Cache-Control` per design.
-- [ ] 3.6 RED conformance test: `/api/catalog` path matches `isCatalogApiRead` in unmodified `runtime-caching.ts`.
-- [ ] 3.7 Create `components/catalog/catalog-filters.tsx` (`"use client"`): search/model/color/pagination controls, calls `/api/catalog`, `history.replaceState`.
-- [ ] 3.8 RED RTL test: filter change fetches `/api/catalog`, replaces cards, no navigation.
-- [ ] 3.9 Wire filters + client listing into `(public)/page.tsx` / `catalog/page.tsx` composition.
-- [ ] 3.10 Verify: `npm --prefix frontend test`; `npm --prefix frontend run build`; manual smoke against local Supabase.
+- [x] 3.1 Create `app/api/catalog/route.ts`: `GET` handler, `createRequestCatalogClient`, builders from 2.3, params via `query-params.ts`.
+- [x] 3.2 RED handler tests (import `GET` + `NextRequest`): no-params -> first page; combined `q`+`model`+`color`+`page` narrows result; zero matches -> well-formed empty result.
+- [x] 3.3 RED threat-matrix tests: each PostgREST metachar class stripped; `q` >80 truncated; `page=0/-1/abc`, `limit=999` -> `400 invalid_query`; unknown `model`/`color` -> `200` no-results; upstream failure -> `503 catalog_unavailable`.
+- [x] 3.4 RED response test: no `cost`/quantity key in any successful response, including empty results.
+- [x] 3.5 GREEN: implement `route.ts` until 3.2-3.4 pass; set `Cache-Control` per design.
+- [x] 3.6 RED conformance test: `/api/catalog` path matches `isCatalogApiRead` in unmodified `runtime-caching.ts`.
+- [x] 3.7 Create `components/catalog/catalog-filters.tsx` (`"use client"`): search/model/color/pagination controls, calls `/api/catalog`, `history.replaceState`.
+- [x] 3.8 RED RTL test: filter change fetches `/api/catalog`, replaces cards, no navigation.
+- [x] 3.9 Wire filters + client listing into `(public)/page.tsx` / `catalog/page.tsx` composition.
+- [x] 3.10 Verify: `npm --prefix frontend test`; `npm --prefix frontend run build`; manual smoke against local Supabase. DONE — full suite green, build succeeded, manual curl smoke against real local Supabase seed (2 products/4 variants) confirmed listing, search, filters, pagination boundaries, and error mapping all work end-to-end.
 
 ## Phase 4: Cross-Cutting Verification
 
-- [ ] 4.1 Sensitive-field check: render listing + detail, inspect full HTML incl. RSC/`__NEXT_DATA__` payload for `cost`/quantity (spec requirement, all 3 slices).
-- [ ] 4.2 Confirm `frontend/src/lib/pwa/runtime-caching.ts` is byte-identical to pre-change across all slices.
-- [ ] 4.3 Full-suite `npm --prefix frontend test` + `npm --prefix frontend run build` after PR 3 merges.
+- [x] 4.1 Sensitive-field check: render listing + detail, inspect full HTML incl. RSC/`__NEXT_DATA__` payload for `cost`/quantity (spec requirement, all 3 slices). DONE — manual curl against real Supabase seed confirmed zero `cost`/`quantity` tokens in `/` HTML, `/product/fundas-iphone-15` HTML (incl. inline RSC payload), and `/api/catalog` JSON; added an automated regression-guard test scanning all `app/(public)`, `app/api/catalog`, `components/catalog` source files for the same tokens.
+- [x] 4.2 Confirm `frontend/src/lib/pwa/runtime-caching.ts` is byte-identical to pre-change across all slices. DONE — extended PR1's pinned-SHA256 conformance test with an `/api/catalog` `isCatalogApiRead`/`StaleWhileRevalidate` case; hash assertion still passes, confirming the file is untouched by all three PRs.
+- [x] 4.3 Full-suite `npm --prefix frontend test` + `npm --prefix frontend run build` after PR 3 merges. DONE — 18 files/120 tests passing; build succeeded with `/` and `/catalog` still static (ISR, revalidate=5m) and `/api/catalog` correctly dynamic.

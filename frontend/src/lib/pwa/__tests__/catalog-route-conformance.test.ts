@@ -3,16 +3,21 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { NetworkFirst, type RouteMatchCallbackOptions } from "serwist";
+import {
+  NetworkFirst,
+  StaleWhileRevalidate,
+  type RouteMatchCallbackOptions,
+} from "serwist";
 import { catalogRuntimeCaching } from "@/lib/pwa/runtime-caching";
 
 /**
- * Confirms every real route this PR introduces (`/`, `/catalog`,
- * `/product/<slug>`) matches the existing, PINNED catalog-page matcher in
- * `runtime-caching.ts` — and that the file itself is byte-identical to its
- * pre-change state. Spec: "Catalog Routes Conform to the Pinned
- * Runtime-Caching Matcher" — this file MUST NOT be modified to
- * accommodate a route shape.
+ * Confirms every real route this change introduces across all three PRs
+ * (`/`, `/catalog`, `/product/<slug>` in PR2; `/api/catalog` in PR3)
+ * matches the existing, PINNED matchers in `runtime-caching.ts` — and that
+ * the file itself is byte-identical to its pre-change state. Spec:
+ * "Catalog Routes Conform to the Pinned Runtime-Caching Matcher" /
+ * "API Routes Conform to the Pinned Runtime-Caching Matcher" — this file
+ * MUST NOT be modified to accommodate a route shape.
  */
 
 // Captured from `runtime-caching.ts` before this change touched anything
@@ -59,5 +64,19 @@ describe("runtime-caching.ts conformance for public-catalog-screens routes", () 
 
     expect(entry).toBeDefined();
     expect(entry?.handler).toBeInstanceOf(NetworkFirst);
+  });
+
+  it("matches the StaleWhileRevalidate catalog-api handler for /api/catalog (isCatalogApiRead)", () => {
+    const options = matchOptionsFor("/api/catalog?q=funda");
+    const entry = catalogRuntimeCaching.find((candidate) => {
+      const matcher = candidate.matcher;
+      if (typeof matcher !== "function") {
+        throw new Error("Expected a function matcher");
+      }
+      return Boolean(matcher(options));
+    });
+
+    expect(entry).toBeDefined();
+    expect(entry?.handler).toBeInstanceOf(StaleWhileRevalidate);
   });
 });

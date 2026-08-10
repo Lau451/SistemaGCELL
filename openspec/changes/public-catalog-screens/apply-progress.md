@@ -171,3 +171,76 @@ Actual authored diff for this batch is **21 files changed, 1541 insertions(+), 7
 ### Status
 
 38/38 Phase 1+2 tasks complete (17/17 Phase 1, 21/21 Phase 2). Ready for `sdd-verify` on the PR2 slice, or for PR3 to branch from `pr2-catalog-ui` once this PR merges.
+
+## Batch 3 (this batch)
+
+**Scope**: Phase 3 — Search API (PR 3 of 3, `stacked-to-main` chain, branch `pr3-catalog-search` off `main`, per the chain strategy already resolved in Engram `sdd/public-catalog-screens/tasks`) + Phase 4 — Cross-Cutting Verification. This is the final slice of `public-catalog-screens`.
+**Mode**: Strict TDD.
+**Tasks**: 3.1–3.10, 4.1–4.3, all complete.
+
+### TDD Cycle Evidence
+
+| Task | Unit | RED | GREEN | REFACTOR |
+|---|---|---|---|---|
+| 3.1–3.5 | `app/api/catalog/route.ts` | Failed: `./route` module not found | 12/12 tests pass (no-params, combined q+model+color+page narrowing, zero-match empty result, page/limit boundary 400s, metachar sanitization, 80-char truncation, upstream-failure 503, no cost/quantity keys, Cache-Control header) | None needed — during GREEN a bug was found and fixed in the *test's own* fake Supabase client (see Issues Found), not in `route.ts` |
+| 3.6 | `lib/pwa/__tests__/catalog-route-conformance.test.ts` (extended) | Failed: no test asserted an `/api/catalog` match against `isCatalogApiRead` | 5/5 tests pass (4 pre-existing + 1 new `StaleWhileRevalidate` match) | None needed |
+| 3.7/3.8 | `components/catalog/catalog-filters.tsx` | Failed: `./catalog-filters` module not found | 4/4 tests pass (initial render fetches nothing on mount, model-change fetches `/api/catalog` and replaces cards, `history.replaceState` called instead of navigation, no-results empty state renders) | None needed |
+| 4.1 (regression guard) | `lib/catalog/__tests__/sensitive-fields.test.ts` | N/A — this is a cross-cutting verification test over already-correct production code (all 3 PRs), not new-feature TDD; it started GREEN because the codebase already satisfies the guarantee structurally (types have no `cost`/`quantity` fields) | 3/3 tests pass | None needed |
+
+Task 3.9 (wiring `CatalogFilters` into `catalog-listing-content.tsx`) has no dedicated new test — per design.md's testing strategy Server Components stay markup-logic-free, and this is a composition change verified via the pre-existing `revalidate.test.ts` safety net (still 4/4 green before and after) plus `next build`'s static-generation pass and a manual curl smoke test against real local Supabase (see Work Unit Evidence), mirroring the precedent PR2 set for `page.tsx` wiring tasks (2.14–2.18).
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and result | `npm --prefix frontend test -- src/app/api/catalog src/components/catalog/catalog-filters.test.tsx src/lib/pwa/__tests__/catalog-route-conformance.test.ts src/lib/catalog/__tests__/sensitive-fields.test.ts` → all passing (also verified via full-suite run below) |
+| Safety net (pre-existing tests re-run before/after modifying `catalog-listing-content.tsx`) | `npm --prefix frontend test -- "src/app/(public)/revalidate.test.ts"` → 4/4 passing both before and after the wiring change |
+| Full-suite result | `npm --prefix frontend test` → 18 test files, 120 tests, all passed (was 15 files/100 tests after PR2; +3 files/+20 tests this batch: `route.test.ts` 12, `catalog-route-conformance.test.ts` +1, `catalog-filters.test.tsx` 4, `sensitive-fields.test.ts` 3) |
+| Runtime harness command/scenario and result | `npm --prefix frontend run build` → succeeded; `/` and `/catalog` still prerendered **static** with `revalidate: 5m` (confirming `CatalogFilters`, a client component receiving only props, does not opt the page into dynamic rendering); `/api/catalog` correctly shows as `ƒ` (dynamic — it calls `cookies()` via `createRequestCatalogClient`); `/product/[slug]` unchanged (`ƒ`, on-demand) |
+| Manual smoke against **real local Supabase** (Docker was actually running this time — confirmed via `npx supabase status` + a `200` from `curl` against the REST API) | Started `npm --prefix frontend run dev`; curl'd `/` (renders `catalog-listing-grid`), `GET /api/catalog` (2 products from the real seed, correct `filters.models`/`filters.colors`), `GET /api/catalog?q=funda` (both match, case-insensitive `ilike`), `GET /api/catalog?page=0` → `400`, `GET /api/catalog?limit=999` → `400`, `GET /api/catalog?model=NoSuchModel` → `200` with `items: []`. All responses matched the design contract exactly against real data, not just the mocked route test. |
+| Sensitive-field manual check against real rendered output (task 4.1) | Fetched raw HTML for `/` and `/product/fundas-iphone-15`, and JSON for `/api/catalog`, into temp files; `grep -io 'cost[a-z_]*\|quantity[a-z_]*'` found **zero matches** in all three (positive control: the same grep found `PriceRange`/`priceFrom` in the API JSON, confirming the pipeline itself works). This covers the inline RSC/Flight payload too, since it's plain text within the same HTML response, not a separately-encoded blob. |
+| Rollback boundary | Delete `frontend/src/app/api/catalog/`, `frontend/src/components/catalog/catalog-filters.tsx` + test, `frontend/src/lib/catalog/__tests__/sensitive-fields.test.ts`; revert `frontend/src/app/(public)/catalog-listing-content.tsx` to its PR2 state (render `CatalogListingView` directly instead of `CatalogFilters`); revert the `/api/catalog` case added to `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts` |
+
+### Key facts verified during apply
+
+- Read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` (per `frontend/AGENTS.md`'s mandatory pre-read) before writing `route.ts`. Confirmed the `GET(request: NextRequest)` signature, that Route Handlers are **not** cached by default (hence the explicit `Cache-Control` header rather than relying on any Next-level caching), and that a `route.ts` cannot coexist with a `page.tsx` at the same segment — not a conflict here since `app/api/catalog/` has no sibling `page.tsx`.
+- A real bug was found and fixed **in the test's own fake Supabase client**, not in production code: the hand-rolled `.or()` filter in `route.test.ts`'s in-memory fake destructured `"name.ilike.%funda%".split(".ilike.")` (which yields exactly 2 elements: `["name", "%funda%"]`) as a 3-element tuple `[column, , pattern]`, silently leaving `pattern` `undefined` and making every `.or()`-filtered query resolve to zero rows. Caught immediately by the "combined q+model+color+page narrows result" test failing with an unexpectedly empty result instead of the expected 1-item narrowing; fixed the destructure to `[column, pattern]`. This is exactly the kind of false-negative Strict TDD's execution gate is designed to catch — the fix was to the test harness, and the real `queries.ts`/`route.ts` production code needed zero changes.
+- Local Supabase (Docker) **was** genuinely running for this batch (unlike PR2's sandbox) — `npx supabase status` showed the core DB/REST/API services live and `curl http://127.0.0.1:54321/rest/v1/` returned `200`. This allowed the manual smoke test (see Work Unit Evidence) to run against the real 2-product/4-variant seed end-to-end, closing the manual-verification gap PR2's apply-progress had flagged as outstanding.
+- `readBoundedParam` (route.ts) applies the same `MAX_SEARCH_TERM_LENGTH` (80-char) cap to `model`/`color` as `sanitizeSearchTerm` does to `q`, even though design.md's param-contract table doesn't specify an explicit reject/truncate behavior for those two params beyond "exact match, ≤80 chars" — truncating (not erroring) was chosen for consistency with `q`'s behavior and because an over-length exact-match filter simply matches nothing, which the "unknown model/color → 200 no-results" contract already covers gracefully.
+- `next build`'s route table confirms `/api/catalog` renders `ƒ` (dynamic) while `/` and `/catalog` stay `○` (static, 5m revalidate) — empirically proving `CatalogFilters` (a `"use client"` component fed only server-resolved props) does not leak dynamic rendering into the ISR shells, matching design.md's two-client-factory rationale.
+- `npm run lint` surfaced one pre-existing `@next/next/no-html-link-for-pages` error in `frontend/src/components/catalog/catalog-empty-state.tsx` (an `<a href="/">` instead of `next/link`'s `<Link>`), confirmed via `git log` to originate from PR2's commit `59f75cd` and untouched by this batch — reported here as a pre-existing issue per Strict TDD's "do not fix pre-existing failures" rule, not fixed in this batch. My own new `route.test.ts` had one lint error (`@typescript-eslint/no-empty-object-type` on an interface with no added members) which I did fix, since it was in a file I authored this batch.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `frontend/src/app/api/catalog/route.ts` | Created | `GET` handler: param parsing/validation (`page`/`limit` → `400 invalid_query`), `q` sanitization/truncation, `model`/`color` bounded exact-match, `scopeProductIdsByVariant` → `listCatalogProducts` → `getCatalogFilterOptions` → `listVariantsForProducts`/`listImagesForProducts` → `deriveListingCard`-based JSON shaping, `503 catalog_unavailable` on any upstream failure, `Cache-Control: public, max-age=0, s-maxage=300, stale-while-revalidate=600` on success |
+| `frontend/src/app/api/catalog/route.test.ts` | Created | 12 tests: default first page, combined q+model+color+page narrowing, zero-match well-formed empty result, page/limit boundary 400s, metachar sanitization, 80-char truncation, upstream-failure 503, no-sensitive-key guarantee, Cache-Control header — via a hand-rolled in-memory filtering fake Supabase client (real `queries.ts`/`derive.ts` run unmocked) |
+| `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts` | Modified | Added one `it` asserting `/api/catalog` matches the pinned `isCatalogApiRead`/`StaleWhileRevalidate` handler; updated the file's module-level comment to reflect all 3 PRs; pinned-SHA256 byte-identity assertion untouched and still passing |
+| `frontend/src/components/catalog/catalog-filters.tsx` | Created | `"use client"` search/model/color/pagination controls; fetches `/api/catalog` on any filter change or page click; `window.history.replaceState` for deep-linkable URLs with no navigation; renders `CatalogListingView` with the fetched items and the correct empty/no-results/error variant |
+| `frontend/src/components/catalog/catalog-filters.test.tsx` | Created | 4 RTL + `user-event` tests: no fetch on mount, model-change fetches and replaces cards, `history.replaceState` called with the new query, no-results empty state renders on a zero-match response |
+| `frontend/src/app/(public)/catalog-listing-content.tsx` | Modified | Now also fetches `getCatalogFilterOptions` in parallel with variants/images; renders `<CatalogFilters initialItems initialFilters>` instead of a plain `<CatalogListingView>` whenever the catalog has products (filter UI hidden for `empty-catalog`/`error` states, per design.md's states table — those two branches are unchanged) |
+| `frontend/src/lib/catalog/__tests__/sensitive-fields.test.ts` | Created | Regression guard: recursively scans every `.ts`/`.tsx` production source file under `app/(public)`, `app/api/catalog`, `components/catalog` and asserts none contains the token `cost` or `quantity` |
+
+### Review-budget note
+
+Actual authored diff for this batch is **909 new lines across 5 new files** (`route.ts` 172, `route.test.ts` 277, `catalog-filters.tsx` 222, `catalog-filters.test.tsx` 155, `sensitive-fields.test.ts` 83) **plus ~54 changed lines** across `catalog-listing-content.tsx` and `catalog-route-conformance.test.ts` — roughly **~963 lines total**, well above `tasks.md`'s slice-3 forecast of ~250–260 lines. This is the same overshoot pattern PR1 and PR2 both already flagged, driven by the same root cause: Strict TDD Mode's exhaustive per-scenario RED tests (12 handler tests covering every threat-matrix row individually, 4 RTL tests for the client wiring, a full in-memory filtering fake to exercise real end-to-end narrowing rather than mocking `queries.ts` away). No scope beyond Phase 3's 10 tasks + Phase 4's 3 tasks was implemented. Delivery was already resolved to `stacked-to-main` with PR3 = Phase 3+4 as the final slice — flagging for orchestrator/user awareness only, no further action taken.
+
+### Deviations from Design
+
+- **`readBoundedParam` truncates (not rejects) an over-length `model`/`color`** — design.md's param table states "exact match, ≤80 chars" without specifying reject-vs-truncate behavior for these two params (unlike `q`, which the table explicitly says is truncated, and `page`/`limit`, which the table explicitly says are rejected with `400`). Chose truncation for consistency with `q` and because the existing "unknown model/color → 200 no-results" contract already makes an over-length, non-matching filter value behave correctly either way.
+- Everything else (query builder reuse from PR2's `queries.ts` with zero new query shapes, response field names, status codes, `Cache-Control` value, `CatalogFilters`' client-side-only interactivity with server-provided initial props, `history.replaceState` instead of `router.push`/`redirect`) matches design.md precisely.
+
+### Issues Found
+
+- A bug in the RED test's own hand-rolled fake Supabase client (`.or()` filter destructuring), not in production code — see "Key facts verified during apply" for the full root-cause and fix. Strict TDD's GREEN execution gate caught it immediately via an unexpected empty result.
+- One pre-existing `npm run lint` error in `frontend/src/components/catalog/catalog-empty-state.tsx` (PR2, commit `59f75cd`, untouched by this batch) — reported per Strict TDD's "do not fix pre-existing failures" rule, not fixed here.
+- None of PR2's outstanding manual-verification gap remains: Docker/local Supabase was actually running this batch and the full search/filter/pagination/error-handling contract was smoke-tested against the real 2-product/4-variant seed, not just mocked tests.
+
+### Remaining Tasks
+
+None. Phase 3 (10/10) and Phase 4 (3/3) are complete.
+
+### Status
+
+51/51 total tasks complete across all 3 PRs (17/17 Phase 1, 21/21 Phase 2, 10/10 Phase 3, 3/3 Phase 4). `public-catalog-screens` is apply-complete. Ready for `sdd-verify`.
