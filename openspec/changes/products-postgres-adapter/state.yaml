@@ -13,7 +13,7 @@ dag:
   specs: complete
   design: complete
   tasks: complete
-  apply: pending
+  apply: complete
   verify: pending
   archive: pending
 
@@ -23,6 +23,7 @@ phases_completed:
   - spec
   - design
   - tasks
+  - apply
 
 review_workload_decision:
   budget_risk: high
@@ -59,6 +60,24 @@ pr_progress:
       - "ruff clean; confirmed no row residue in products table after full suite run"
     sdd_attempt_ledger: "settled (state: complete, no reset needed)"
     merged_to_main: 7862be0
+  pr3_stock_domain:
+    status: complete
+    tasks: "3.1-3.11 + 4.1-4.3 (14/14, Phase 3+4 combined -- final slice)"
+    tests: "74/74 passing against real local Postgres (54 pass/20 skip without DB_URL) -- independently re-run by orchestrator in both modes"
+    actual_changed_lines: 967
+    budget_exception: "967 vs 400-line budget; accepted after ask-on-risk stop, same Strict-TDD test-density pattern as PR1/PR2"
+    verified_by_orchestrator:
+      - "read stock/application/repository.py: StockMovementRepository has exactly one method (record), no update/delete"
+      - "read stock/domain/stock_movement.py: sign-direction validation (StrEnum MovementType, positive-only/negative-only sets) matches stock_movements_sign_direction_check exactly"
+      - "grep confirmed one-way dependency: products/ has zero imports of gcell.stock; only register_stocked_product.py imports gcell.products inside stock/"
+      - "ruff clean"
+    known_constraint: >
+      stock_movements' append-only trigger + ON DELETE RESTRICT means a committed
+      movement row can never be cleaned up in tests -- test harness uses
+      SAVEPOINT/rollback (db_conn fixture) rather than real commits for isolation,
+      documented explicitly by the apply agent, not a gap.
+    sdd_attempt_ledger: "settled (state: complete, no reset needed)"
+    merged_to_main: f4210e5
 
 design_findings_verified_by_orchestrator:
   - "confirmed 'stock' already present in DOMAINS list in backend/tests/architecture/test_domain_boundary.py -- only BANNED_MODULES needs asyncpg added"
@@ -90,7 +109,7 @@ known_risks:
   - "product_variants -> stock_movements is ON DELETE RESTRICT; delete is explicitly out of scope for this change"
   - "existing openspec/specs/inventory-schema/spec.md already specifies ledger behavior at the DB/schema level -- sdd-spec must scope stock-movement-recording to the backend APPLICATION level to avoid duplicating those requirements"
 
-next_recommended: sdd-apply (3 chained PRs, stacked-to-main -- orchestrator to confirm split with user before launching)
+next_recommended: sdd-verify
 
 notes: |
   Builds on archived supabase-schema (real Postgres schema, verified end-to-end)
