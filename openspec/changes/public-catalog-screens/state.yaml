@@ -49,6 +49,19 @@ pr_progress:
       - "frontend/.env.local confirmed gitignored (git status shows only .env.example as tracked); no service_role key anywhere in frontend"
     sdd_attempt_ledger: "settled (state: complete, changed_lines: 1117 raw diff; reset once from 800 to 2000 max-changed-lines budget, same miscalibration pattern as initial-scaffolding PR1)"
     merged_to_main: fb1b649
+  pr2_pages_ui:
+    status: complete
+    tasks: "2.1-2.21 (21/21)"
+    tests: "100/100 passing (15 test files) -- independently re-run by orchestrator"
+    actual_changed_lines: 1650
+    budget_exception: "1650 vs 400-line budget, same Strict-TDD test-density pattern as PR1; accepted after ask-on-risk stop"
+    verified_by_orchestrator:
+      - "grepped variant-picker.tsx source: zero `disabled=` attributes, confirms out-of-stock swatches are real radio buttons, not disabled controls"
+      - "confirmed frontend/src/app/page.tsx (scaffold) actually deleted via git status"
+      - "live browser verification against a freshly-reset local Supabase (found and cleaned a stale 'RLS Check Phone' fixture row left over from supabase-schema's verify phase first): listing renders both real seeded products with correct 'Desde $12.990' / '$14.990' pricing; product detail page's Transparente (out-of-stock) swatch is a real ARIA radio, clicking it swaps price to $12.990 and shows a 'Sin stock' indicator with no page navigation and no console errors"
+    docker_note: "Docker Desktop was not running when sdd-apply's own agent tried to manually verify (used graceful error-state fallback only) -- user started Docker Desktop themselves, orchestrator then ran supabase start + db reset + real browser verification before merge"
+    sdd_attempt_ledger: "settled (state: complete, changed_lines within the 2500 max-changed-lines budget acquired upfront -- no reset needed this time, applied the PR1 lesson)"
+    merged_to_main: 59f75cd
 
 product_decisions:
   scope: "Full — listing + detail + color picker + search/filters/pagination (user overrode Medium recommendation, anticipates catalog growth)"
