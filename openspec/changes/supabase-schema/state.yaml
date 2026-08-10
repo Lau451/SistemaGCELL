@@ -28,17 +28,23 @@ verify_result:
     - "frontend 7/7, backend 9/9 regression"
   issues:
     - severity: WARNING
-      status: not_addressed
+      status: resolved
       description: >
-        apply-progress.md claims "18 PASS notices" from the GREEN run; script actually
-        produces 14 PASS: lines + 1 summary (15 total) -- documentation-only inaccuracy,
-        state.yaml's "15/15" is correct.
+        apply-progress.md claimed "18 PASS notices" from the GREEN run; script actually
+        produces 14 PASS: lines + 1 summary (15 total).
+      resolution: "Corrected the count in apply-progress.md (commit 069bbe5)."
     - severity: WARNING
-      status: not_addressed
+      status: resolved
       description: >
-        product_images.variant_id has an inline `references product_variants (id)` creating
+        product_images.variant_id had an inline `references product_variants (id)` creating
         a redundant implicit simple FK alongside the documented composite FK (design
-        Decision 10). Harmless (fully subsumed by the composite FK) but undocumented.
+        Decision 10).
+      resolution: >
+        Removed the inline `references` clause from the migration SQL (variant_id is now
+        a plain uuid column; the composite product_images_variant_fk already enforces
+        existence + same-product membership). Documented explicitly in design.md Decision 10.
+        Re-verified after supabase db reset: 15/15 rls_checks assertions pass, only the
+        2 expected FKs remain on product_images, frontend 7/7, backend 9/9 (commit 069bbe5).
     - severity: SUGGESTION
       description: "588-line diff vs 400 budget -- already accepted as size:exception, no action"
     - severity: SUGGESTION
@@ -101,7 +107,7 @@ known_conflicts:
     migrations/ holds no schema SQL. This change supersedes it — sdd-spec must author a delta
     that explicitly modifies/retires that requirement, not just add new ones.
 
-next_recommended: sdd-archive (2 cosmetic WARNINGs, no CRITICAL blockers -- orchestrator to confirm with user whether to fix first)
+next_recommended: sdd-archive (both WARNINGs resolved and re-verified at commit 069bbe5)
 
 notes: |
   Builds on archived initial-scaffolding (supabase init only, no schema).
