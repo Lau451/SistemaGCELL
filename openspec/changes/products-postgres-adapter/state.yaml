@@ -47,6 +47,18 @@ pr_progress:
       - "architecture boundary test (domain/ imports only stdlib) still passes"
     sdd_attempt_ledger: "settled (state: complete, no reset needed -- within acquired 2000-line budget)"
     merged_to_main: 109bf71
+  pr2_postgres_adapter:
+    status: complete
+    tasks: "2.1-2.9 (9/9)"
+    tests: "41/41 passing against real local Postgres (28 pass/13 skip without DB_URL) -- independently re-run by orchestrator in both modes"
+    actual_changed_lines: 619
+    budget_exception: "619 vs 400-line budget; accepted after ask-on-risk stop, same Strict-TDD test-density pattern"
+    verified_by_orchestrator:
+      - "read postgres_product_repository.py in full: zero-variant LEFT JOIN handling correct (filters variant_id IS NULL rows), add() wraps both inserts in transaction(), duplicate-slug catch scoped to products_slug_key constraint name"
+      - "confirmed test_zero_variant_product_reads_back_with_empty_variants and test_failed_variant_insert_leaves_no_partial_rows exist and cover exactly the tricky cases"
+      - "ruff clean; confirmed no row residue in products table after full suite run"
+    sdd_attempt_ledger: "settled (state: complete, no reset needed)"
+    merged_to_main: 7862be0
 
 design_findings_verified_by_orchestrator:
   - "confirmed 'stock' already present in DOMAINS list in backend/tests/architecture/test_domain_boundary.py -- only BANNED_MODULES needs asyncpg added"
