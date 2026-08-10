@@ -15,7 +15,7 @@ import ast
 from pathlib import Path
 
 DOMAINS = ["products", "stock", "content", "ai", "recommendation", "shared"]
-BANNED_MODULES = {"fastapi", "pydantic", "supabase", "sqlalchemy", "httpx"}
+BANNED_MODULES = {"fastapi", "pydantic", "supabase", "sqlalchemy", "httpx", "asyncpg"}
 
 BACKEND_SRC = Path(__file__).resolve().parents[2] / "src" / "gcell"
 

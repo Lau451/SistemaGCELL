@@ -36,15 +36,15 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Products Postgres Adapter (PR2)
 
-- [ ] 2.1 [GREEN] Create `shared/infrastructure/config.py`: `db_url()` from `os.environ`
-- [ ] 2.2 [GREEN] Create `shared/infrastructure/postgres.py`: `create_pool`, `close_pool`, `transaction(pool_or_conn)` accepting Pool or Connection (nested `Connection.transaction()` becomes a SAVEPOINT)
-- [ ] 2.3 [GREEN] Update `main.py`: `lifespan` -> `app.state.db_pool`, `min_size=0`, missing `DB_URL` -> warn + `None`
-- [ ] 2.4 [RED->GREEN] Fix `test_health.py`: `with TestClient(app) as client:` so lifespan actually runs
-- [ ] 2.5 [GREEN] Add `asyncpg` to `backend/pyproject.toml`; create `.env.example`
-- [ ] 2.6 [GREEN] Create `backend/tests/conftest.py`: `db_pool` (skip if no `DB_URL`), `db_conn` (rollback-isolated per test)
-- [ ] 2.7 [RED] Create `tests/integration/db/test_product_repository.py`: round-trip by slug/id incl. zero-variant, duplicate slug -> `DuplicateProductSlugError`, failed insert leaves no rows
-- [ ] 2.8 [GREEN] Create `products/infrastructure/postgres_product_repository.py`: client `uuid4()` before insert, atomic INSERT products + `executemany` variants, one `LEFT JOIN` read, `UniqueViolationError` scoped to `products_slug_key` -> `DuplicateProductSlugError`
-- [ ] 2.9 [GREEN] Add `"asyncpg"` to `BANNED_MODULES` in `test_domain_boundary.py` (defer `application/` sweep — see notes)
+- [x] 2.1 [GREEN] Create `shared/infrastructure/config.py`: `db_url()` from `os.environ`
+- [x] 2.2 [GREEN] Create `shared/infrastructure/postgres.py`: `create_pool`, `close_pool`, `transaction(pool_or_conn)` accepting Pool or Connection (nested `Connection.transaction()` becomes a SAVEPOINT)
+- [x] 2.3 [GREEN] Update `main.py`: `lifespan` -> `app.state.db_pool`, `min_size=0`, missing `DB_URL` -> warn + `None`
+- [x] 2.4 [RED->GREEN] Fix `test_health.py`: `with TestClient(app) as client:` so lifespan actually runs
+- [x] 2.5 [GREEN] Add `asyncpg` to `backend/pyproject.toml`; create `.env.example`
+- [x] 2.6 [GREEN] Create `backend/tests/conftest.py`: `db_pool` (skip if no `DB_URL`), `db_conn` (rollback-isolated per test)
+- [x] 2.7 [RED] Create `tests/integration/db/test_product_repository.py`: round-trip by slug/id incl. zero-variant, duplicate slug -> `DuplicateProductSlugError`, failed insert leaves no rows
+- [x] 2.8 [GREEN] Create `products/infrastructure/postgres_product_repository.py`: client `uuid4()` before insert, atomic INSERT products + `executemany` variants, one `LEFT JOIN` read, `UniqueViolationError` scoped to `products_slug_key` -> `DuplicateProductSlugError`
+- [x] 2.9 [GREEN] Add `"asyncpg"` to `BANNED_MODULES` in `test_domain_boundary.py` (defer `application/` sweep — see notes)
 
 ## Phase 3: Stock Domain (PR3)
 
