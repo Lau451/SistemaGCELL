@@ -10,8 +10,8 @@ session_preflight:
 
 dag:
   proposal: complete
-  specs: pending
-  design: pending
+  specs: complete
+  design: complete
   tasks: pending
   apply: pending
   verify: pending
@@ -20,6 +20,18 @@ dag:
 phases_completed:
   - explore
   - propose
+  - spec
+  - design
+
+design_findings_verified_by_orchestrator:
+  - >
+    Confirmed against frontend/node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md:
+    Next 16 genuinely deprecated middleware.ts/middleware() in favor of proxy.ts/proxy().
+    admin-authentication spec.md was written before this was caught (parallel with design) and
+    still said middleware.ts and /login -- fixed directly: now says proxy.ts and /admin/login,
+    matching design.md's route-group URL contract fix (route group contributes no URL segment,
+    so admin routes must live at app/(admin)/admin/** per initial-scaffolding's pinned /admin/*
+    contract). proposal.md/exploration.md keep the original wording as historical record only.
 
 product_decisions:
   scope: >
@@ -42,7 +54,7 @@ known_risks:
   - "review budget: Minimal scope + negative auth tests (missing/expired/wrong-iss/wrong-aud/tampered signature) is plausible but not comfortably clear of 400 lines -- sdd-tasks must forecast honestly"
   - "platform-foundation's pool-lifecycle requirement needs a genuine MODIFIED delta (fail-fast/503 clause for /admin), not just an implementation fix"
 
-next_recommended: sdd-spec and sdd-design (parallelizable per dependency graph)
+next_recommended: sdd-tasks
 
 notes: |
   Builds on archived products-postgres-adapter (ProductRepository/stock domain
