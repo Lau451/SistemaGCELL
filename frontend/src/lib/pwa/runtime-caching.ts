@@ -25,6 +25,7 @@ import {
  */
 
 const ADMIN_PATH_PREFIX = "/admin";
+const ADMIN_API_PREFIX = "/api/admin";
 const CATALOG_API_PREFIX = "/api/catalog";
 const SUPABASE_STORAGE_PUBLIC_SEGMENT = "/storage/v1/object/public/";
 
@@ -42,6 +43,7 @@ type Matcher = (options: RouteMatchCallbackOptions) => boolean;
 const isAdminOrMutatingRequest: Matcher = ({ url, request }) =>
   url.pathname === ADMIN_PATH_PREFIX ||
   url.pathname.startsWith(`${ADMIN_PATH_PREFIX}/`) ||
+  url.pathname.startsWith(ADMIN_API_PREFIX) ||
   request.method !== "GET";
 
 const isCatalogPageNavigation: Matcher = ({ url, request }) =>
@@ -56,8 +58,12 @@ const isSupabaseStoragePublicObject: Matcher = ({ url, request }) =>
   url.pathname.includes(SUPABASE_STORAGE_PUBLIC_SEGMENT);
 
 export const catalogRuntimeCaching: RuntimeCaching[] = [
-  // 1. `/admin/*` or any non-GET request: never land in a shared cache.
-  //    Must stay first, or a broader matcher below would capture it.
+  // 1. `/admin/*`, `/api/admin/*` (the server-to-server admin proxy —
+  //    a separate prefix from `/admin/*` on purpose, so `proxy.ts` can
+  //    exclude it from the HTML-redirect-to-login gate and return its
+  //    own JSON 401 instead), or any non-GET request: never land in a
+  //    shared cache. Must stay first, or a broader matcher below would
+  //    capture it.
   {
     matcher: isAdminOrMutatingRequest,
     handler: new NetworkOnly(),

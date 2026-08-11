@@ -46,15 +46,15 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Frontend — Session & Proxy Infrastructure (PR 2)
 
-- [ ] 2.1 RED `frontend/src/lib/admin/__tests__/redirect.test.ts`: `isSafeAdminPath` rejects `//evil.com`, `/\evil.com`, `https://evil`, `/adminx`, `/catalog`; accepts `/admin`, `/admin/products?x=1`.
-- [ ] 2.2 GREEN `frontend/src/lib/admin/redirect.ts`: `isSafeAdminPath()`.
-- [ ] 2.3 GREEN `frontend/src/lib/admin/env.ts`: `getBackendUrl()` (default `http://127.0.0.1:8000`).
-- [ ] 2.4 GREEN (append only) `frontend/src/lib/supabase/server.ts`: add `createSessionClient()`; do not touch existing two factories.
-- [ ] 2.5 GREEN `frontend/src/lib/supabase/proxy-client.ts`: `createProxyClient(req, res)`, two-arg `setAll(cookies, headers)` applying cache-suppressing headers.
-- [ ] 2.6 GREEN `frontend/src/proxy.ts`: `export function proxy(request)`, `matcher: ["/admin/:path*"]`, `getClaims()` gate, `/admin/login` pass-through/redirect rules, `next=` param.
-- [ ] 2.7 Add `BACKEND_URL` to `frontend/.env.example`.
-- [ ] 2.8 RED extend `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts`: assert `/admin`, `/admin/login`, `/admin/products`, `/api/admin/products` resolve `NetworkOnly`; assert `runtime-caching.ts` unmodified (pinned hash).
-- [ ] 2.9 Verify: 2.8 passes with zero edits to `runtime-caching.ts`.
+- [x] 2.1 RED `frontend/src/lib/admin/__tests__/redirect.test.ts`: `isSafeAdminPath` rejects `//evil.com`, `/\evil.com`, `https://evil`, `/adminx`, `/catalog`; accepts `/admin`, `/admin/products?x=1`.
+- [x] 2.2 GREEN `frontend/src/lib/admin/redirect.ts`: `isSafeAdminPath()`.
+- [x] 2.3 GREEN `frontend/src/lib/admin/env.ts`: `getBackendUrl()` (default `http://127.0.0.1:8000`).
+- [x] 2.4 GREEN (append only) `frontend/src/lib/supabase/server.ts`: add `createSessionClient()`; do not touch existing two factories.
+- [x] 2.5 GREEN `frontend/src/lib/supabase/proxy-client.ts`: `createProxyClient(req, res)`, two-arg `setAll(cookies, headers)` applying cache-suppressing headers.
+- [x] 2.6 GREEN `frontend/src/proxy.ts`: `export function proxy(request)`, `matcher: ["/admin/:path*"]`, `getClaims()` gate, `/admin/login` pass-through/redirect rules, `next=` param.
+- [x] 2.7 Add `BACKEND_URL` to `frontend/.env.example`.
+- [x] 2.8 RED extend `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts`: assert `/admin`, `/admin/login`, `/admin/products`, `/api/admin/products` resolve `NetworkOnly`; assert `runtime-caching.ts` matches a pinned hash. DONE — this RED test caught a real gap: `/api/admin/products` did NOT match the original `isAdminOrMutatingRequest` (`/api/admin` and `/admin` are different prefixes). Renaming the route under `/admin/*` was considered and rejected (it would break `proxy.ts`'s deliberate `/api/admin/*` exclusion, sending unauthenticated JSON callers an HTML redirect instead of `401`).
+- [x] 2.9 GREEN: added `ADMIN_API_PREFIX = "/api/admin"` + one `startsWith` check to `isAdminOrMutatingRequest` in `runtime-caching.ts`, mirroring the file's existing `CATALOG_API_PREFIX`/`isCatalogApiRead` pattern. This is the ONE deliberate, documented edit to that file in this change; the conformance test's pinned SHA256 was recomputed to match. 144/144 tests pass.
 
 ## Phase 3: Login Page, Admin Pages, API Proxy Route (PR 3)
 

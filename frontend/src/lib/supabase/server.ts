@@ -48,3 +48,38 @@ export async function createRequestCatalogClient() {
     },
   });
 }
+
+/**
+ * Session-writing client for the admin auth flow (PR2/PR3) — the login
+ * Server Action, Route Handlers under `/api/admin/*`, and Server
+ * Components inside the `(admin)` group. Distinct from
+ * `createAnonCatalogClient`/`createRequestCatalogClient` above (which
+ * are read-only catalog clients and MUST NOT be reused for auth — see
+ * spec.md "Requirement: Login With Email/Password").
+ *
+ * `setAll` best-effort writes cookies back through the awaited, already-
+ * resolved `cookies()` store. Called from a Server Component (an RSC),
+ * `store.set` throws because the store is read-only there — safe to
+ * swallow: `proxy.ts` already refreshed the cookies for this request, so
+ * an RSC-context write is redundant, not lossy.
+ */
+export async function createSessionClient() {
+  const { url, anonKey } = getCatalogSupabaseEnv();
+  const store = await cookies();
+
+  return createServerClient(url, anonKey, {
+    cookies: {
+      getAll: () => store.getAll(),
+      setAll: (cookiesToSet) => {
+        try {
+          for (const { name, value, options } of cookiesToSet) {
+            store.set(name, value, options);
+          }
+        } catch {
+          // Read-only store: called from an RSC. Safe to ignore — see
+          // the doc comment above.
+        }
+      },
+    },
+  });
+}

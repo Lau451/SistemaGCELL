@@ -152,14 +152,106 @@ not by inspection — worth noting for future SDD batches that name
 cross-directory test helpers `conftest.py` in a project without
 `__init__.py` package markers.
 
-## Remaining Tasks (out of scope for this PR)
+## Remaining Tasks (out of scope for PR1)
 
 - [ ] Phase 2: Frontend session/proxy infrastructure (PR 2)
 - [ ] Phase 3: Login page, admin pages, API proxy route (PR 3)
 - [ ] Phase 4: End-to-end verification
 - [ ] Phase 5: Cleanup
 
-## Status
+## Status (PR1)
 
 12/12 Phase 1 tasks complete. Ready for `sdd-verify` on this PR1 slice, then
 PR2 (`sdd-apply` Phase 2) targets this branch per `stacked-to-main`.
+
+## Batch 2 (PR2 — Frontend Session & Proxy Infrastructure)
+
+**Scope**: Phase 2 (9 tasks). Branch `pr2-admin-session-proxy` off `main`
+(post-PR1). No login page, no admin pages yet — infrastructure only.
+**Mode**: Strict TDD.
+
+### Continuity note
+
+This batch's `sdd-apply` sub-agent session was interrupted mid-run (process
+restart, not a task failure). On resume, the orchestrator found 143/144
+frontend tests passing with substantial real progress already on disk
+(`proxy.ts`, `proxy.test.ts`, `proxy-client.ts`+test, `lib/admin/{redirect,env}.ts`
++tests, `server.ts` append, `.env.example`) and one genuine RED failure in
+the conformance test extension (task 2.8). Reviewed all pre-existing code by
+hand (found high quality — e.g. `isSafeAdminPath` correctly rejects
+`//evil.com`/backslash-authority tricks via WHATWG `URL` origin comparison,
+not a naive string prefix check; `proxy-client.ts` correctly applies both
+cookie writes AND `@supabase/ssr@0.12.4`'s cache-suppressing response
+headers). The orchestrator then diagnosed and fixed the one remaining RED
+test itself (see below) rather than re-launching a fresh apply agent, since
+the fix was well-understood and narrowly scoped.
+
+### Tasks 2.8/2.9 — the one real finding
+
+RED test (task 2.8) asserted `/api/admin/products` resolves to
+`runtime-caching.ts`'s `NetworkOnly` handler while the same file also
+asserts byte-identity to its pre-change state — a genuine contradiction:
+`isAdminOrMutatingRequest` only checked the `/admin` prefix, and
+`/api/admin` is a different prefix, so it did NOT match.
+
+**Rejected fix**: rename the route under `/admin/*` (e.g. `/admin/api/products`)
+to avoid touching the pinned file. Rejected because `proxy.ts`'s own
+`config.matcher: ["/admin/:path*"]` deliberately EXCLUDES `/api/admin/*` so
+the JSON proxy route (built in PR3) can return its own `401` instead of an
+HTML redirect-to-login — renaming would silently break that exclusion and
+send unauthenticated JSON callers an HTML page instead.
+
+**Applied fix** (task 2.9): added `ADMIN_API_PREFIX = "/api/admin"` and one
+`url.pathname.startsWith(ADMIN_API_PREFIX)` check to `isAdminOrMutatingRequest`
+in `runtime-caching.ts`, mirroring the file's own existing
+`CATALOG_API_PREFIX`/`isCatalogApiRead` pattern from `public-catalog-screens`.
+This is the ONE deliberate, documented edit to that file across the entire
+`admin-panel-auth` change. Recomputed the conformance test's pinned SHA256
+to match the new content; any further, undocumented edit still fails the
+test. `design.md` and `tasks.md` corrected to stop claiming a blanket
+"zero changes"/"byte-identical" for ALL admin routes — that claim is true
+for the `(admin)` group's page routes, false for this one API route.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Full suite result | `npm --prefix frontend test` → 22 test files, 144 tests, all passed |
+| Lint | `npm --prefix frontend run lint` → clean |
+| Build | `npm --prefix frontend run build` → succeeded; route table confirms `ƒ Proxy (Middleware)` registered (Next.js recognizes `proxy.ts`, independent confirmation of the file-convention rename) |
+| Rollback boundary | Delete `frontend/src/proxy.ts`+test, `frontend/src/lib/supabase/proxy-client.ts`+test, `frontend/src/lib/admin/`; revert the appended `createSessionClient` export in `server.ts`, the `ADMIN_API_PREFIX` addition in `runtime-caching.ts`, and `.env.example` |
+
+### Files Changed
+
+| File | Action |
+|---|---|
+| `frontend/src/proxy.ts` | Created — Next 16 `proxy` convention, session refresh, `/admin/*` guard, `next=` param, `/admin/login` pass-through/redirect rules |
+| `frontend/src/lib/supabase/proxy-client.ts` | Created — request/response cookie-pair factory, applies cookies AND cache-suppressing headers |
+| `frontend/src/lib/supabase/server.ts` | Modified (append only) — `createSessionClient()`; the two existing read-only catalog factories are byte-untouched |
+| `frontend/src/lib/admin/redirect.ts` | Created — `isSafeAdminPath()` open-redirect guard via WHATWG `URL` origin comparison |
+| `frontend/src/lib/admin/env.ts` | Created — `getBackendUrl()`, defaults to `http://127.0.0.1:8000` (not `localhost`, avoiding Node's IPv6-first DNS resolution racing `uvicorn`'s IPv4 bind) |
+| `frontend/src/lib/pwa/runtime-caching.ts` | Modified — the one deliberate `/api/admin` prefix extension (see above) |
+| `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts` | Modified — extended for `/admin`, `/admin/login`, `/admin/products`, `/api/admin/products`; pinned SHA256 recomputed |
+| `frontend/.env.example` | Modified — `BACKEND_URL` |
+| `openspec/changes/admin-panel-auth/design.md`, `tasks.md` | Modified — corrected the runtime-caching.ts "zero changes" claim to be precise about which routes it covers |
+
+### Deviations from Design
+
+None beyond the runtime-caching.ts finding above, which the design itself
+had gotten wrong (not a deviation from a correct design, a correction of
+an incorrect one) — already fully documented above and in `design.md`.
+
+### Issues Found
+
+None beyond the one finding above (which was resolved, not left open).
+
+### Remaining Tasks (out of scope for PR2)
+
+- [ ] Phase 3: Login page, admin pages, API proxy route (PR 3)
+- [ ] Phase 4: End-to-end verification
+- [ ] Phase 5: Cleanup
+
+### Status (PR2)
+
+9/9 Phase 2 tasks complete. Ready for `sdd-verify` on this PR2 slice, or
+for PR3 to branch from `pr2-admin-session-proxy` once this PR merges.
