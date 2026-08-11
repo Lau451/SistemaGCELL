@@ -1,0 +1,53 @@
+change: admin-panel-auth
+schema: spec-driven-state/v1
+
+session_preflight:
+  pace: interactive
+  artifact_store: hybrid
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+  review_budget_lines: 400
+
+dag:
+  proposal: complete
+  specs: pending
+  design: pending
+  tasks: pending
+  apply: pending
+  verify: pending
+  archive: pending
+
+phases_completed:
+  - explore
+  - propose
+
+product_decisions:
+  scope: >
+    Minimal -- auth mechanism (login, session-based route protection, JWT
+    verification) plus exactly ONE read-only proof endpoint (GET /admin/products
+    proxied). User chose this over Medium (+ create/list UI) to isolate
+    security-critical auth work from UI/form risk. Real admin CRUD UI is an
+    explicit, separate, later change.
+  auth_mechanism: "Supabase Auth (email/password) via @supabase/ssr -- reuses already-running local Auth"
+  call_shape: "Next.js Route Handlers as server-to-server proxy to FastAPI -- avoids CORS, keeps JWT server-side"
+  jwt_verification: "FastAPI Depends on /admin router prefix, checks signature (HS256/JWT_SECRET) + exp + iss + aud, all four required"
+  admin_user_provisioning: "manual one-time step (Supabase Studio/CLI), OUTSIDE this change's automated scope -- apply/verify will need this done first"
+  session_expiry_ux: "redirect to login with return URL (accepted default)"
+  already_authenticated_login_visit: "redirect to admin landing page (accepted default)"
+  logout_control: "included in this slice, part of session lifecycle being proven (accepted default)"
+
+known_risks:
+  - "JWT library not chosen yet (PyJWT vs python-jose) -- deferred to sdd-design with rationale"
+  - "db_pool is None fail-fast placement unresolved: startup abort would break the existing /health lifespan test that runs without DB_URL -- likely a per-request 503 dependency guard instead, design owns the call"
+  - "review budget: Minimal scope + negative auth tests (missing/expired/wrong-iss/wrong-aud/tampered signature) is plausible but not comfortably clear of 400 lines -- sdd-tasks must forecast honestly"
+  - "platform-foundation's pool-lifecycle requirement needs a genuine MODIFIED delta (fail-fast/503 clause for /admin), not just an implementation fix"
+
+next_recommended: sdd-spec and sdd-design (parallelizable per dependency graph)
+
+notes: |
+  Builds on archived products-postgres-adapter (ProductRepository/stock domain
+  wired to real Postgres, zero HTTP routes yet, db_pool published on app.state
+  specifically for this change to consume) and archived public-catalog-screens
+  (existing @supabase/ssr dependency, two read-only anon-key client factories
+  that must NOT be touched/reused for auth). Public catalog behavior must not
+  change -- this change is purely additive.
