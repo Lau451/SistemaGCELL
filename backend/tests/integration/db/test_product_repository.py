@@ -190,3 +190,27 @@ async def test_list_all_includes_products_with_and_without_variants(db_conn) -> 
     assert without_variant.id in ids
     fetched_without = next(p for p in all_products if p.id == without_variant.id)
     assert fetched_without.variants == []
+
+
+async def test_list_all_keeps_product_with_every_variant_retired(db_conn) -> None:
+    """The ON-vs-WHERE trap (design.md "the LEFT JOIN filter goes in ON,
+    never in WHERE"). Retiring every variant of a product via raw SQL (no
+    port method exists yet -- that is PR2's job) must NOT remove the product
+    from list_all(): the variant filter belongs in the LEFT JOIN's ON
+    clause, not in a WHERE that would silently degrade the join to an INNER
+    JOIN and drop products with zero active variants.
+    """
+    repository = PostgresProductRepository(db_conn)
+    product = make_product()
+    await repository.add(product)
+
+    await db_conn.execute(
+        "UPDATE product_variants SET deleted_at = now() WHERE product_id = $1",
+        product.id,
+    )
+
+    all_products = await repository.list_all()
+    fetched = next((p for p in all_products if p.id == product.id), None)
+
+    assert fetched is not None
+    assert fetched.variants == []

@@ -28,23 +28,24 @@ _SELECT_COLUMNS = """
 _SELECT_BY_SLUG = f"""
     SELECT {_SELECT_COLUMNS}
     FROM products p
-    LEFT JOIN product_variants v ON v.product_id = p.id
-    WHERE p.slug = $1
+    LEFT JOIN product_variants v ON v.product_id = p.id AND v.deleted_at IS NULL
+    WHERE p.slug = $1 AND p.deleted_at IS NULL
     ORDER BY v.created_at, v.id
 """
 
 _SELECT_BY_ID = f"""
     SELECT {_SELECT_COLUMNS}
     FROM products p
-    LEFT JOIN product_variants v ON v.product_id = p.id
-    WHERE p.id = $1
+    LEFT JOIN product_variants v ON v.product_id = p.id AND v.deleted_at IS NULL
+    WHERE p.id = $1 AND p.deleted_at IS NULL
     ORDER BY v.created_at, v.id
 """
 
 _SELECT_ALL = f"""
     SELECT {_SELECT_COLUMNS}
     FROM products p
-    LEFT JOIN product_variants v ON v.product_id = p.id
+    LEFT JOIN product_variants v ON v.product_id = p.id AND v.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL
     ORDER BY p.created_at, p.id, v.created_at, v.id
 """
 
