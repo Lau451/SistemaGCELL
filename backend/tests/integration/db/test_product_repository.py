@@ -371,6 +371,18 @@ async def test_soft_delete_retires_the_product_via_update(db_conn) -> None:
     assert row is not None
     assert row["deleted_at"] is not None
 
+    # sdd-verify WARNING (re-verify pass): the spec's "neither variant row's
+    # deleted_at MUST change" sub-claim had no dedicated runtime assertion --
+    # cascade is a read-time join filter, never a second write against
+    # product_variants (design.md "cascades at read time, not by stamping
+    # variants").
+    variant_row = await db_conn.fetchrow(
+        "SELECT deleted_at FROM product_variants WHERE product_id = $1",
+        product.id,
+    )
+    assert variant_row is not None
+    assert variant_row["deleted_at"] is None
+
 
 async def test_soft_delete_on_an_unknown_product_raises_product_not_found(
     db_conn,
