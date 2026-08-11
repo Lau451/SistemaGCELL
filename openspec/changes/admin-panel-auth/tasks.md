@@ -58,17 +58,17 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Login Page, Admin Pages, API Proxy Route (PR 3)
 
-- [ ] 3.1 RED `frontend/src/app/api/admin/products/__tests__/route.test.ts`: no claims→401 JSON, `fetch` never called; claims→one call with `Authorization: Bearer`; network throw→502.
-- [ ] 3.2 GREEN `frontend/src/app/api/admin/products/route.ts` per design.
-- [ ] 3.3 GREEN `frontend/src/app/(admin)/admin/login/page.tsx`: form + `signInAction` (generic error only, safe-`next` redirect).
-- [ ] 3.4 GREEN `frontend/src/app/(admin)/admin/layout.tsx`: shell + `signOutAction`.
-- [ ] 3.5 GREEN `frontend/src/app/(admin)/admin/page.tsx`: landing.
-- [ ] 3.6 GREEN `frontend/src/app/(admin)/admin/products/page.tsx`: consumes `/api/admin/products`.
+- [x] 3.1 RED `frontend/src/app/api/admin/products/__tests__/route.test.ts`: no claims→401 JSON, `fetch` never called; claims→one call with `Authorization: Bearer`; network throw→502. DONE — 4 tests (no-claims-401, empty-claims-401, proxies-with-bearer-200, throw-502).
+- [x] 3.2 GREEN `frontend/src/app/api/admin/products/route.ts` per design. DONE — matches design.md's pseudocode exactly (`getClaims()` gate, `getSession()` for the opaque token, try/catch around `fetch` → 502).
+- [x] 3.3 GREEN `frontend/src/app/(admin)/admin/login/page.tsx`: form + `signInAction` (generic error only, safe-`next` redirect). DONE — split into `page.tsx` (Server Component, reads `next` searchParam) + `login-form.tsx` (client, `useActionState`) + `actions.ts` (`signInAction`), container/presentational-style. 9 tests total across `actions.test.ts` (4), `login-form.test.tsx` (2), `page.test.tsx` (3) — including a same-generic-message-for-both-failure-modes triangulation proving no oracle.
+- [x] 3.4 GREEN `frontend/src/app/(admin)/admin/layout.tsx`: shell + `signOutAction`. DONE — `signOutAction` in its own `actions.ts` (1 test: call-order proof, signOut before redirect), `layout.tsx` renders children + nav + logout form (3 tests: children pass through, products link, submit invokes action).
+- [x] 3.5 GREEN `frontend/src/app/(admin)/admin/page.tsx`: landing. DONE — purely structural per design's File Changes ("Landing"); one behavioral test (links to `/admin/products`, the one proof page this change ships).
+- [x] 3.6 GREEN `frontend/src/app/(admin)/admin/products/page.tsx`: consumes `/api/admin/products`. DONE — 2 tests (renders product/variant rows, error state on failed fetch). **Design gap found and resolved, not silently patched**: design.md's Data Flow says "fetch same-origin" from the RSC but does not address that a server-side `fetch()` from a Server Component does NOT automatically carry the browser's session cookie (unlike a browser `fetch`) — without forwarding it by hand, the proxy route would always see no session and 401. Fixed by reading the incoming request's `cookie` header via `next/headers`' `headers()` and forwarding it explicitly on the outbound `fetch`, plus building an absolute URL from the `host`/`x-forwarded-proto` headers (a relative URL has no meaning in server-side `fetch`). Both the RED test and the E2E check (4.1) prove this is real, not theoretical.
 
 ## Phase 4: End-to-End Verification
 
-- [ ] 4.1 One true E2E: log in with the provisioned admin user, confirm redirect into `/admin`, confirm `/admin/products` renders rows through the full proxy→FastAPI chain.
-- [ ] 4.2 Confirm no backend-only env value (`SUPABASE_JWKS_URL`, `BACKEND_URL`) leaks into `next build`'s client output or a stray `NEXT_PUBLIC_*` var. Note: under the corrected ES256/JWKS design there is no shared signing secret to leak in the first place (verification only ever needs the PUBLIC key, openly served at `/auth/v1/.well-known/jwks.json` by design) — this check still guards against accidentally exposing `BACKEND_URL` or other internal config, not a forgeable secret.
+- [x] 4.1 One true E2E: log in with the provisioned admin user, confirm redirect into `/admin`, confirm `/admin/products` renders rows through the full proxy→FastAPI chain. DONE — see apply-progress.md "Batch 3" for the exact approach used and result.
+- [x] 4.2 Confirm no backend-only env value (`SUPABASE_JWKS_URL`, `BACKEND_URL`) leaks into `next build`'s client output or a stray `NEXT_PUBLIC_*` var. DONE — see apply-progress.md "Batch 3" for the exact method and result.
 
 ## Phase 5: Cleanup
 

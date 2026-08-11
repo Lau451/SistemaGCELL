@@ -119,6 +119,38 @@ pr_progress:
       - "npm run build succeeded, confirmed 'Proxy (Middleware)' registered in the route table -- independent confirmation Next.js recognizes proxy.ts"
     sdd_attempt_ledger: "settled (state: complete, no reset needed)"
     merged_to_main: c45b131
+  pr3_login_pages_e2e:
+    status: complete
+    tasks: "3.1-3.6, 4.1-4.2 (8/8)"
+    tests: "164/164 passing (144 baseline + 20 new) -- independently re-run by orchestrator; lint also clean"
+    actual_changed_lines: "983 per git diff --stat (16 new files); ledger recorded 1220"
+    budget_exception: "983/1220 vs 400-line budget; accepted after ask-on-risk stop, same Strict-TDD test-density pattern as PR1/PR2"
+    real_finding: >
+      products/page.tsx's server-side fetch() to /api/admin/products does not
+      automatically carry the visiting browser's session cookie (unlike a
+      browser-issued fetch) -- design.md's "fetch same-origin" Data Flow
+      didn't address this. Fixed by reading the incoming request's cookie
+      header via next/headers and forwarding it explicitly, plus building an
+      absolute URL from host/x-forwarded-proto headers. Confirmed real (not
+      theoretical) via both the RED test and the live E2E.
+    e2e_approach: >
+      Provisioned a second throwaway admin user (e2e-admin@gcell.local) via
+      POST /auth/v1/signup since the original admin@gcell.local password was
+      not available after context compaction. Started FastAPI and Next dev
+      live against the real local Supabase stack, drove the real login
+      Server Action via curl (extracting Next 16's $ACTION_ID/$ACTION_REF/
+      $ACTION_KEY hidden fields, submitting multipart/form-data) -- not a
+      shortcut around signInAction. Full chain verified: unauthenticated
+      /admin/products -> 307 to login; login -> 303 to /admin with real
+      session cookie; authenticated /admin/products -> 200 with 5 real
+      product/variant rows from Postgres. Both dev servers stopped after.
+    env_leak_check: "npm run build with backend-only env vars set; grepped .next/static for names/values and frontend/src for NEXT_PUBLIC_* -- no matches, PASS"
+    verified_by_orchestrator:
+      - "read route.ts, login actions.ts, login-form.tsx, layout.tsx, actions.ts (signOut), products/page.tsx in full -- generic error message (no account-existence oracle), isSafeAdminPath reused (not reimplemented) for the redirect guard, getClaims() as the trust boundary with getSession() only for token extraction"
+      - "confirmed git diff --stat: 16 files changed, 983 insertions, zero PR1/PR2 files touched"
+      - "npm test (full suite, no filter) and npm run lint run directly by orchestrator, both clean"
+    sdd_attempt_ledger: "reset after maintainer-approved budget exception (native ledger recorded changed_line_budget_exceeded: true at settle, cleared via sdd-attempt reset with reason/actor recorded)"
+    merged_to_main: pending
 
 design_findings_verified_by_orchestrator:
   - >
@@ -151,7 +183,11 @@ known_risks:
   - "review budget: Minimal scope + negative auth tests (missing/expired/wrong-iss/wrong-aud/tampered signature) is plausible but not comfortably clear of 400 lines -- sdd-tasks must forecast honestly"
   - "platform-foundation's pool-lifecycle requirement needs a genuine MODIFIED delta (fail-fast/503 clause for /admin), not just an implementation fix"
 
-next_recommended: sdd-apply (3 chained PRs, stacked-to-main -- orchestrator to confirm split with user before launching)
+next_recommended: >
+  All 3 PRs implemented and independently verified by the orchestrator.
+  Merge pr3-admin-login-pages to main, then run sdd-verify across the whole
+  change, then sdd-archive (watch for the known archive-agent folder-
+  duplication/content-rewrite bug -- diff-verify manually before committing).
 
 notes: |
   Builds on archived products-postgres-adapter (ProductRepository/stock domain

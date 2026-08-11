@@ -255,3 +255,224 @@ None beyond the one finding above (which was resolved, not left open).
 
 9/9 Phase 2 tasks complete. Ready for `sdd-verify` on this PR2 slice, or
 for PR3 to branch from `pr2-admin-session-proxy` once this PR merges.
+
+## Batch 3 (PR3 — Login Pages, API Proxy Route, E2E)
+
+**Scope**: Phase 3 (6 tasks) + Phase 4 (2 tasks). Branch
+`pr3-admin-login-pages` off `pr2-admin-session-proxy` (stacked-to-main).
+Does not touch any PR1/PR2 file.
+**Mode**: Strict TDD (RED test written and confirmed failing, via actual
+`npm test` execution, before every production file).
+
+### Completed Tasks
+
+- [x] 3.1 RED `frontend/src/app/api/admin/products/__tests__/route.test.ts`
+      — 4 tests (no-claims-401 + fetch-never-called, empty-claims-401,
+      proxies-with-bearer-200, throw-502)
+- [x] 3.2 GREEN `frontend/src/app/api/admin/products/route.ts` — matches
+      design.md's pseudocode exactly
+- [x] 3.3 GREEN login page — split `page.tsx` (Server Component) +
+      `login-form.tsx` (client, `useActionState`) + `actions.ts`
+      (`signInAction`) — 9 tests
+- [x] 3.4 GREEN admin layout — `actions.ts` (`signOutAction`, 1 test) +
+      `layout.tsx` (shell + logout form, 3 tests)
+- [x] 3.5 GREEN `frontend/src/app/(admin)/admin/page.tsx` — landing,
+      1 test
+- [x] 3.6 GREEN `frontend/src/app/(admin)/admin/products/page.tsx` —
+      2 tests; found and fixed a real design gap (cookie forwarding, see
+      Deviations below)
+- [x] 4.1 One true E2E against the live local stack — see below
+- [x] 4.2 Client-bundle env-leak check — see below
+
+### Files Changed
+
+| File | Action | What Was Done |
+|---|---|---|
+| `frontend/src/app/api/admin/products/route.ts` | Created | `GET` proxy: `getClaims()` gate, `getSession()` for the opaque token, `fetch` to `${getBackendUrl()}/admin/products` with `Authorization: Bearer`, 401/502 handling |
+| `frontend/src/app/api/admin/products/__tests__/route.test.ts` | Created | 4 tests, `createSessionClient`/`fetch` mocked |
+| `frontend/src/app/(admin)/admin/login/page.tsx` | Created | Server Component: reads `next` searchParam (handles `string \| string[] \| undefined`), renders `LoginForm` |
+| `frontend/src/app/(admin)/admin/login/page.test.tsx` | Created | 3 tests, `LoginForm` stubbed |
+| `frontend/src/app/(admin)/admin/login/login-form.tsx` | Created | Client component, `useActionState(signInAction, ...)`, labeled email/password inputs, generic error `role="alert"`, hidden `next` field |
+| `frontend/src/app/(admin)/admin/login/login-form.test.tsx` | Created | 2 tests, `signInAction` mocked |
+| `frontend/src/app/(admin)/admin/login/actions.ts` | Created | `signInAction`: `createSessionClient()` → `signInWithPassword` → generic error on failure / `redirect(resolveRedirectTarget(next))` on success |
+| `frontend/src/app/(admin)/admin/login/actions.test.ts` | Created | 4 tests incl. same-generic-message-for-both-failure-modes (no-oracle proof) |
+| `frontend/src/app/(admin)/admin/layout.tsx` | Created | Shell: header, `/admin` + `/admin/products` links, logout `<form action={signOutAction}>` |
+| `frontend/src/app/(admin)/admin/layout.test.tsx` | Created | 3 tests (children pass through, products link, submit invokes action) |
+| `frontend/src/app/(admin)/admin/actions.ts` | Created | `signOutAction`: `signOut()` then `redirect("/admin/login")` |
+| `frontend/src/app/(admin)/admin/actions.test.ts` | Created | 1 test, call-order proof (`signOut` before `redirect`) |
+| `frontend/src/app/(admin)/admin/page.tsx` | Created | Landing page, links to `/admin/products` |
+| `frontend/src/app/(admin)/admin/page.test.tsx` | Created | 1 test |
+| `frontend/src/app/(admin)/admin/products/page.tsx` | Created | Server Component: forwards the incoming request's `cookie` header via `next/headers`, builds an absolute URL from `host`/`x-forwarded-proto`, fetches `/api/admin/products`, renders a product/variant table or an error state |
+| `frontend/src/app/(admin)/admin/products/page.test.tsx` | Created | 2 tests, `next/headers` + `fetch` mocked |
+| `openspec/changes/admin-panel-auth/tasks.md` | Modified | Phase 3 + Phase 4 tasks marked `[x]` with DONE notes |
+
+### TDD Cycle Evidence (Strict TDD Mode)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1/3.2 | `route.test.ts` | Unit (Route Handler) | N/A (new file) | Written (import error) | Passed 4/4 | 4 distinct cases (401 no-claims, 401 empty-claims, 200-with-bearer, 502-throw) | Clean |
+| 3.3 (action) | `actions.test.ts` (login) | Unit | N/A (new file) | Written (import error) | Passed 4/4 | Wrong-password vs no-such-user same message; safe-`next` vs unsafe-`next` | Clean |
+| 3.3 (form) | `login-form.test.tsx` | Component (RTL) | N/A (new file) | Written (import error) | Passed 2/2 | Renders + submit-with-error | Clean |
+| 3.3 (page) | `page.test.tsx` (login) | Component (RTL) | N/A (new file) | Written (import error) | Passed 3/3 | string / absent / array `next` | Clean |
+| 3.4 (action) | `actions.test.ts` (admin) | Unit | N/A (new file) | Written (import error) | Passed 1/1 | ➖ Single (call-order is the only behavior) | Clean |
+| 3.4 (layout) | `layout.test.tsx` | Component (RTL) | N/A (new file) | Written (import error) | Passed 3/3 | children / link / submit | Clean |
+| 3.5 | `page.test.tsx` (admin) | Component (RTL) | N/A (new file) | Written (import error) | Passed 1/1 | ➖ Single — purely structural per design's File Changes ("Landing") | Clean |
+| 3.6 | `page.test.tsx` (products) | Component (RTL) | N/A (new file) | Written (import error) | Passed 2/2 | Success-with-rows vs failure-with-error-state | Clean |
+
+Every RED test was executed via `npm test -- <file>` and confirmed to fail
+with an import-resolution error (production file did not exist yet) before
+its GREEN implementation was written — not assumed.
+
+### Test Summary
+
+- **Total tests written this batch**: 20 (4 route + 4 login-actions + 2
+  login-form + 3 login-page + 1 signout-action + 3 layout + 1 admin-landing
+  + 2 products-page)
+- **Full frontend suite**: `npm test` (no filter) → **164/164 passing**
+  (144 from PR1+PR2 baseline + 20 new; zero regressions)
+- **Layers used**: Unit (10: route handler + 2× server actions), Component/RTL (10: login-form, login-page, layout, admin-landing, products-page)
+- **Approval tests**: None — no refactoring tasks in this batch
+- **Pure functions created**: `resolveRedirectTarget` (login actions),
+  `resolveNextParam` (login page), `fetchAdminProducts`/table-row mapping
+  (products page)
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd frontend && npm test -- route.test.ts` → 16 passed (12 pre-existing `api/catalog/route.test.ts` + 4 new `api/admin/products/route.test.ts`); each new file's own focused run also captured individually above (all green) |
+| Runtime harness command/scenario and exact result | See "One True E2E" below — full live-stack chain, not a substitute |
+| Rollback boundary | Delete `frontend/src/app/api/admin/products/`, `frontend/src/app/(admin)/admin/**`; revert the `tasks.md` `[x]` marks for Phase 3/4. Zero PR1/PR2 files touched. |
+
+### One True E2E (Task 4.1)
+
+**Approach used**: (a) from the prompt's options — logged in as a **newly
+provisioned** admin test user (`e2e-admin@gcell.local` /
+`E2ETestPass123!`, created via `POST /auth/v1/signup` against the live
+local Supabase Auth, same mechanism as `design.md`'s Prerequisite
+section), because the original `admin@gcell.local` password was
+unavailable after context compaction and the prompt explicitly
+authorized this workaround.
+
+**Live stack used**:
+- Local Supabase (already running): Auth at `http://127.0.0.1:54321`,
+  Postgres at `127.0.0.1:54322` (confirmed 3 real products / 5 variants
+  present via a direct `asyncpg` query)
+- FastAPI backend: started via `uv run --with uvicorn uvicorn
+  gcell.main:app --app-dir src --host 127.0.0.1 --port 8000` — `uvicorn`
+  is NOT a declared dependency (same pre-existing gap PR1 documented), so
+  `--with uvicorn` resolves it into an ephemeral run-only environment
+  without touching `pyproject.toml`/`uv.lock`. `DB_URL`,
+  `SUPABASE_JWKS_URL`, `SUPABASE_JWT_ISSUER` set inline.
+- Next.js dev server: `npm run dev -- --port 3100` with
+  `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+  `BACKEND_URL=http://127.0.0.1:8000` set inline.
+
+**Steps executed and results** (via `curl`, not Playwright — none exists
+in this repo, per design.md's own Testing Strategy):
+
+1. `GET /admin/products` with no session cookie → **`307` to
+   `/admin/login?next=%2Fadmin%2Fproducts`** (proxy gate + return-URL
+   preservation, confirmed).
+2. Fetched `/admin/login`, extracted Next 16's real progressive-
+   enhancement Server Action hidden fields
+   (`$ACTION_ID_...`/`$ACTION_REF_2`/`$ACTION_2:0`/`$ACTION_2:1`/
+   `$ACTION_KEY`) from the rendered HTML, then `POST`ed a genuine
+   `multipart/form-data` submission with `email`/`password` — this
+   drives the REAL `signInAction` code path exactly as a JS-disabled
+   browser would (not a shortcut around the form). Result: **`303 See
+   Other`**, `Location: /admin` (safe default since `next=""`), and a
+   real `Set-Cookie: sb-127-auth-token=...` carrying a genuine
+   ES256-signed Supabase session.
+3. `GET /admin/products` WITH that cookie → **`200`**, HTML contains 5
+   real `<tr>` rows (`Funda iPhone 15` × 2 variants, `Funda Galaxy S24` ×
+   2 variants, `Funda atómica` × 1 variant) with real name/model/color/
+   price/cost values pulled from Postgres — proving the full chain:
+   browser cookie → `proxy.ts` allow → RSC → cookie-forwarded `fetch` →
+   `/api/admin/products` → `getClaims`/`getSession` →
+   `Authorization: Bearer` → FastAPI `verify_admin_jwt` (real JWKS fetch
+   against the live Auth instance, ES256) → `require_db_pool` →
+   `PostgresProductRepository.list_all()` → real rows → rendered table.
+
+**Result**: PASS — the entire login → `/admin` → `/admin/products`
+chain works end-to-end against the live stack, both the unauthenticated
+(redirect) and authenticated (render rows) branches confirmed.
+
+Both servers were stopped after the check (`Stop-Process`); confirmed
+`000`/connection-refused on both ports afterward.
+
+### Env-Leak Check (Task 4.2)
+
+`npm run build` (webpack, read-only — `next.config.ts` untouched) with
+`SUPABASE_JWKS_URL`, `SUPABASE_JWT_ISSUER`, and `BACKEND_URL` deliberately
+set in the build environment, to prove they do NOT leak even when
+present.
+
+- `grep -rl "SUPABASE_JWKS_URL\|BACKEND_URL\|127.0.0.1:8000\|jwks.json" .next/static` → **no matches** (exit 1)
+- `grep -rn "NEXT_PUBLIC_.*(BACKEND_URL|JWKS|JWT_ISSUER|JWT_AUDIENCE)" frontend/src` → **no matches**
+- Build succeeded; route table confirms `/admin`, `/admin/login`,
+  `/admin/products`, `/api/admin/products` all present, `ƒ Proxy
+  (Middleware)` registered. Noted (not a leak, informational):
+  `/admin` (the landing page) is prerendered `○ Static` since it has no
+  per-request data dependency — harmless, `proxy.ts` still gates it at
+  request time regardless of static optimization.
+
+**Result**: PASS.
+
+### Deviations from Design
+
+1. **`frontend/src/app/(admin)/admin/products/page.tsx` — cookie
+   forwarding, a real gap in design.md, found and fixed, not silently
+   patched.** design.md's Data Flow diagram says the RSC does a "fetch
+   same-origin" to the proxy route but never states that a server-side
+   `fetch()` inside a Server Component does NOT automatically carry the
+   visiting browser's cookies (unlike a browser's own `fetch`, this is a
+   separate outbound HTTP request from the Node process). Without
+   forwarding the `cookie` header by hand, `createSessionClient()` inside
+   `/api/admin/products/route.ts` would see no session on every request
+   and the page would always render the error state — even for a
+   genuinely authenticated admin. Fixed by reading the incoming request's
+   `cookie` header via `next/headers`'s `headers()` and forwarding it
+   explicitly, plus building an absolute URL from `host`/
+   `x-forwarded-proto` (server-side `fetch` has no implicit base URL).
+   Both the RED test (`page.test.tsx`, asserts the exact forwarded
+   `cookie` header) and the live E2E check (4.1) prove this is a real,
+   previously-invisible bug, not a theoretical one — the E2E would have
+   returned the error state on step 3 above if this had been skipped.
+2. No other deviations — `route.ts`, `actions.ts` (login and admin),
+   `login-form.tsx`, `layout.tsx`, and the landing page all match
+   design.md's stated contracts and File Changes table exactly.
+3. **E2E driven via raw `curl` replicating Next 16's real progressive-
+   enhancement Server Action wire format, not a simplified shortcut.**
+   Considered and rejected: authenticating directly against the Supabase
+   Auth REST API and manually constructing a session cookie (would prove
+   the proxy→backend chain but NOT that `signInAction`/the login FORM
+   itself works). Instead, extracted the actual hidden
+   `$ACTION_ID_...`/`$ACTION_REF_2`/`$ACTION_KEY` fields Next embeds in
+   the rendered login page HTML and submitted them exactly as a
+   JS-disabled browser would — this exercises the real `signInAction`
+   Server Action end-to-end, including its own internal
+   `signInWithPassword` call and `redirect()`, not a bypass of it.
+
+### Issues Found
+
+None blocking beyond the one design gap in Deviation 1 above (found and
+resolved within this batch, not left open).
+
+### Remaining Tasks (out of scope for PR3)
+
+- [ ] Phase 5: Cleanup (README documentation, full combined `pytest` +
+      `npm test` run) — deliberately out of scope per the prompt's Phase
+      5 exclusion
+
+### Status (PR3)
+
+8/8 Phase 3 + Phase 4 tasks complete. Diff size this batch: 16 files
+changed, 983 insertions (production + test code) — plus 8/8 line changes
+in `tasks.md` documentation. Well above the nominal 400-line budget, as
+forecast in `tasks.md`'s Review Workload Forecast (`400-line budget risk:
+High`, `Chained PRs recommended: Yes`) — this was the pre-resolved "PR 3"
+work unit (`chain strategy: stacked-to-main`, `delivery strategy:
+ask-on-risk`), not a scope overrun. Ready for `sdd-verify` on this PR3
+slice. Only Phase 5 (cleanup/documentation) remains for the whole
+`admin-panel-auth` change.
