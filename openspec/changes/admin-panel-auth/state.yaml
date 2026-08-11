@@ -150,7 +150,7 @@ pr_progress:
       - "confirmed git diff --stat: 16 files changed, 983 insertions, zero PR1/PR2 files touched"
       - "npm test (full suite, no filter) and npm run lint run directly by orchestrator, both clean"
     sdd_attempt_ledger: "reset after maintainer-approved budget exception (native ledger recorded changed_line_budget_exceeded: true at settle, cleared via sdd-attempt reset with reason/actor recorded)"
-    merged_to_main: pending
+    merged_to_main: 2998432
 
 design_findings_verified_by_orchestrator:
   - >
@@ -184,10 +184,11 @@ known_risks:
   - "platform-foundation's pool-lifecycle requirement needs a genuine MODIFIED delta (fail-fast/503 clause for /admin), not just an implementation fix"
 
 next_recommended: >
-  All 3 PRs implemented and independently verified by the orchestrator.
-  Merge pr3-admin-login-pages to main, then run sdd-verify across the whole
-  change, then sdd-archive (watch for the known archive-agent folder-
-  duplication/content-rewrite bug -- diff-verify manually before committing).
+  All 3 PRs implemented, independently verified, and merged to main
+  (2998432). Run sdd-verify across the whole change, then sdd-archive
+  (watch for the known archive-agent folder-duplication/content-rewrite
+  bug -- diff-verify manually before committing). Push to origin/main
+  once archived (nothing pushed yet).
 
 notes: |
   Builds on archived products-postgres-adapter (ProductRepository/stock domain
