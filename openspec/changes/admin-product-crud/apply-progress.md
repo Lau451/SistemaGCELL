@@ -1,5 +1,159 @@
 # Apply Progress: Admin Product CRUD
 
+## Batch 3 (PR3 — API Routes)
+
+**Scope**: Phase 3 (3.1–3.13), the pre-resolved "PR 3" work unit (`chain
+strategy: stacked-to-main`, `delivery strategy: ask-on-risk`) from
+`tasks.md`'s Review Workload Forecast. Branch
+`pr3-product-crud-api-routes` off `main` (`7223970`, which already has
+PR1's migration + read filters and PR2's port/adapters/use cases/slug
+generation merged). No `create_product.py`/`update_product.py`/
+`retire_product.py`/repository port/either adapter modified — this PR only
+wires routes to PR2's use cases. No frontend files touched, per scope.
+**Mode**: Strict TDD.
+
+### Completed Tasks
+
+- [x] 3.1 RED `test_admin.py` (extend): no token on write routes → `401`, repository never called
+- [x] 3.2 RED same file: valid token + no pool → `503`, repository not invoked
+- [x] 3.3 RED same file: `slug` in body → `422` (`extra="forbid"`)
+- [x] 3.4 RED same file: valid `POST` → `201` with server-generated `slug`
+- [x] 3.5 RED same file: `PATCH`/`DELETE` on unknown/retired id → `404`
+- [x] 3.6 RED same file: IDOR across parents — cross-parent variant `DELETE` → `404`, never `403`
+- [x] 3.7 GREEN `admin.py`: `AdminVariantInput`, `AdminProductWriteRequest`, request models
+- [x] 3.8 GREEN `admin.py`: `POST /admin/products` → `CreateProductUseCase`, `201`
+- [x] 3.9 GREEN `admin.py`: `PATCH /admin/products/{id}` → `UpdateProductUseCase`, `200`
+- [x] 3.10 GREEN `admin.py`: `DELETE /admin/products/{id}` → `RetireProductUseCase`, `204`
+- [x] 3.11 GREEN `admin.py`: `DELETE /admin/products/{id}/variants/{variant_id}` → `RetireVariantUseCase`, `204`
+- [x] 3.12 GREEN `admin.py`: exception-to-status mapping (`422`/`404`/`409`)
+- [x] 3.13 Regression: `test_health.py`, `test_lifespan.py` unmodified, stay green
+
+## Files Changed (Batch 3)
+
+| File | Action | What Was Done |
+|---|---|---|
+| `backend/src/gcell/api/admin.py` | Modified | Added `AdminVariantInput`/`AdminProductWriteRequest` request models (`extra="forbid"`, `Decimal` price/cost); `_execute_or_raise` helper (single exception-to-status mapping site for all 4 write routes); `POST /admin/products` (`201`, `CreateProductUseCase`); `PATCH /admin/products/{id}` (`200`, `UpdateProductUseCase`); `DELETE /admin/products/{id}` (`204`, `RetireProductUseCase`); `DELETE /admin/products/{id}/variants/{variant_id}` (`204`, `RetireVariantUseCase`) — every write route goes through a PR2 use case, never a repository method directly |
+| `backend/tests/integration/api/test_admin.py` | Modified | +15 tests: 401/503 parametrized across all 4 write routes (8 tests), `slug`-in-body 422 for POST+PATCH (2), server-generated-slug 201 (1), 404 for unknown/retired product/variant (3), and the cross-parent IDOR test (1) using the real `db_pool` fixture + two products created via the real `CreateProductUseCase` |
+| `openspec/changes/admin-product-crud/tasks.md` | Modified | Phase 3 tasks (3.1–3.13) marked `[x]` with DONE notes |
+
+## TDD Cycle Evidence (Strict TDD Mode, Batch 3)
+
+| Task | Test | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|------|-------|------------|-----|-------|-------------|----------|
+| 3.1 | `test_no_token_on_write_routes_returns_401_and_never_calls_repository` | Integration (`TestClient`) | Pre-existing 3/3 GET tests in this file stayed green | Written and run: all 4 parametrized cases FAILED with `404 Not Found` (routes didn't exist) | 4/4 passed after wiring all 4 routes | 4 cases: POST/PATCH/DELETE-product/DELETE-variant | Clean |
+| 3.2 | `test_valid_token_with_no_pool_returns_503_on_write_routes` | Integration (`TestClient`) | Same as above | Written and run: all 4 FAILED (`404`) | 4/4 passed | 4 cases, same route set | Clean |
+| 3.3 | `test_slug_in_write_body_is_rejected_with_422` | Integration (`TestClient`) | Same | Written and run: both (POST/PATCH) FAILED (`404`) | 2/2 passed once `extra="forbid"` landed | 2 cases: POST, PATCH | Clean |
+| 3.4 | `test_valid_post_creates_product_with_server_generated_slug` | Integration (`TestClient`, monkeypatched repo) | Same | Written and run: FAILED (`404`) | Passed once `POST` wired to `CreateProductUseCase` | 1 case (slug derivation is already exhaustively table-tested in PR2's `test_slug.py`; this test proves only the wiring) | Clean |
+| 3.5 | 3 tests (patch/delete-product/delete-variant unknown-id) | Integration (`TestClient`, monkeypatched repo) | Same | Written and run: all 3 FAILED (`404` route-not-found, not yet the intended `404 not_found`) | 3/3 passed once the exception mapping landed | 3 distinct error sources: `UpdateProductUseCase`'s own `get_by_id` pre-check, `soft_delete`, `soft_delete_variant` | Clean |
+| 3.6 | `test_delete_variant_cross_parent_returns_404_not_403` | Integration (`TestClient` + real `db_pool`) | Same | Written and run: FAILED (`404` route-not-found — proves nothing yet, since no route means everything 404s; the SUBSTANTIVE proof is described below) | Passed once the route called `RetireVariantUseCase` → `repository.soft_delete_variant`, whose SQL scopes `WHERE id = $1 AND product_id = $2` | 1 case, deliberately not parametrized — this is `design.md`'s single highest-value threat-matrix case, and design.md flagged it as needing its own careful test | Clean |
+| 3.7–3.12 | (exercised via 3.1–3.6's tests) | N/A — no dedicated test file; these are the GREEN implementation tasks for 3.1–3.6's RED tests | N/A | N/A | Verified by the RED→GREEN transitions above | N/A | Clean |
+
+### A note on 3.6's "genuine RED" requirement
+
+Because no route existed before this batch, EVERY new test's initial run failed with a generic FastAPI `404 Not Found` (route-not-found), not the specific assertion failure it was designed to catch. This is still a legitimate RED — `pytest` genuinely failed before any production code existed — but for 3.6 specifically, a route-not-found `404` and the intended "cross-parent variant retire returns `404`" assertion happen to share the same status code, so the status-code assertion alone would not have distinguished "no route" from "route exists and correctly rejects." The RED run was verified by inspecting the actual failure: `response.json() == {"detail": "not_found"}` failed with `{'detail': 'Not Found'}` (FastAPI's default 404 body, capital N, no underscore) vs. the expected `{'detail': 'not_found'}` (this route's own body) — a byte-level difference that proves the RED run really did hit "no route" and not an accidental early-pass. After GREEN, the same assertion passes because the route now exists and returns its own generic body. The additional post-assertion (`still_active.variants` still contains `variant_b_id`) further proves no mutation occurred, which a route-not-found response could not have proven either way.
+
+### Test Summary (Batch 3)
+- **Total tests written this batch**: 15 (8 + 2 + 1 + 3 + 1 across the 6 test functions, parametrization counted individually)
+- **Total tests passing (backend, full suite, `DB_URL` set, no filter)**: 160/160 (was 145/145 after PR2; +15 new, 0 regressions)
+- **Total tests passing (frontend, full suite, no filter)**: 170/170 — identical to PR1/PR2's baseline, confirms zero frontend files touched
+- **Layers used**: Integration only (`TestClient`, 14 with monkeypatched-spy `PostgresProductRepository` + 1 with the real local Postgres via `db_pool`)
+- **Approval tests**: None
+- **Pure functions created**: None — `_to_domain_variants` and `_execute_or_raise` are the only new functions; `_execute_or_raise` has I/O (awaits the wrapped coroutine)
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd backend && DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres uv run pytest tests/integration/api/test_admin.py -v` → **18 passed** (3 pre-existing GET + 15 new) |
+| Runtime harness command/scenario and exact result | `tests/integration/api/test_admin.py::test_delete_variant_cross_parent_returns_404_not_403` runs a REAL `uvicorn`-equivalent request path: `TestClient`'s own ASGI lifespan opens a real `asyncpg` pool against the local Supabase Postgres, two products are persisted for real via `CreateProductUseCase`, the `DELETE` request is dispatched through the full FastAPI stack (auth → pool guard → route → `RetireVariantUseCase` → `PostgresProductRepository.soft_delete_variant`'s real SQL), and cleanup runs in `finally`. This is the closest equivalent to `tasks.md`'s suggested `curl` harness without needing a separately running server process |
+| Rollback boundary | Revert the new routes, request models, and `_execute_or_raise`/`_to_domain_variants` helpers in `admin.py`, and the 15 new tests in `test_admin.py`. PR1 and PR2 stay valid and green standalone — nothing in this batch touches PR1/PR2's files |
+
+## Diff Size (measured, `git diff --stat`)
+
+2 files changed, 435 insertions(+), 7 deletions(-) — **442 authored changed
+lines**. This is above `tasks.md`'s own ~300-line estimate for this work
+unit, driven by the same pattern as PR1/PR2: the 15 new integration tests
+(including the deliberately careful, heavily-commented IDOR test) account
+for ~289 of the 442 lines, and the production code (`admin.py`'s diff)
+totals ~153 lines. Reported honestly, not trimmed. This PR was already
+flagged `400-line budget risk: High` with `stacked-to-main` chaining
+pre-approved at the top-level Review Workload Forecast, so no further
+chaining decision is needed for this slice; it remains its own reviewable,
+autonomous PR.
+
+## Deviations from Design
+
+1. **Task text said `soft_delete`/`soft_delete_variant`, implementation
+   calls `RetireProductUseCase`/`RetireVariantUseCase`** (tasks 3.10/3.11):
+   `tasks.md`'s literal task text names the repository methods, but the
+   user's explicit brief for this batch (reinforced by PR2's own
+   `apply-progress.md` "Issues Found") requires routes to call the PR2 USE
+   CASES, never `PostgresProductRepository` methods directly — the
+   IDOR-adjacent guard for `update` lives at the use-case layer, and
+   consistency (every write route going through its matching use case)
+   was chosen over a route-by-route mix of "sometimes use case, sometimes
+   repository directly." `RetireProductUseCase`/`RetireVariantUseCase` are
+   both thin delegations to the exact same repository methods `tasks.md`
+   named, so behavior is unchanged — only the call path is one layer
+   higher, matching `CreateProductUseCase`/`UpdateProductUseCase`'s
+   pattern for the other two routes.
+2. **3.6's test uses `db_pool`, not `db_conn`** (design.md's Testing
+   Strategy table doesn't specify which DB fixture to use for route-level
+   integration tests): `db_conn` holds an open transaction on a connection
+   bound to pytest's own event loop; `TestClient` drives the ASGI app's
+   real ASGI lifespan (and therefore any `pool.acquire()` calls inside the
+   route) on its OWN event loop via a background-thread portal. Reusing a
+   `db_conn`-held connection across that loop boundary would raise
+   asyncpg's "attached to a different loop" error. `db_pool` sidesteps
+   this: connections are acquired and released per use, never held open
+   across the boundary, and the two test products are committed for real
+   and explicitly cleaned up in `finally` (no rows are left behind on
+   either pass or failure, since the `finally` block runs regardless).
+3. **No global FastAPI exception handlers** (design.md doesn't specify the
+   mechanism, only the mapping table): implemented as a single
+   `_execute_or_raise(operation: Awaitable[T]) -> T` helper that every
+   write route wraps its use-case coroutine in, rather than
+   `@app.exception_handler(...)` registrations on `main.py`. `admin.py`'s
+   router has no access to the `FastAPI` app instance (composition-root
+   pattern, `main.py` owns `app`), and a per-route wrapper keeps the
+   mapping colocated with the routes it protects, visible in one file
+   without needing to cross-reference `main.py`.
+
+None of these deviations change any spec-level behavior; every
+`admin-api-access` requirement and scenario is satisfied exactly as
+written.
+
+## Issues Found
+
+None blocking. One confirmation worth flagging: `_execute_or_raise`
+catches `(ValueError, TypeError)` broadly — this correctly covers every
+domain invariant raised by `Product`/`ProductVariant.__post_init__` (via
+`_to_domain_variants` or the use cases' own `Product(...)` construction),
+but does NOT catch `UnslugifiableProductNameError` (raised by
+`generate_unique_slug` inside `CreateProductUseCase` for a name with no
+alphanumeric content) or `SlugGenerationExhaustedError` — neither is a
+`ValueError`/`TypeError` subclass, and design.md's exception-to-status
+table (task 3.12's exact scope) does not list them. An admin submitting a
+name like `"🎁🎁"` would currently surface as an unhandled `500`, not the
+`422` a caller would reasonably expect. This is a pre-existing gap in
+design.md's mapping table, not something introduced by this batch — out
+of this PR's explicit scope (task 3.12 says "per design.md's exact
+table"), flagged here for a follow-up decision rather than silently
+patched over the design's stated contract.
+
+## Remaining Tasks (out of scope for PR3)
+
+- [ ] Phase 4: Frontend (PR 4)
+- [ ] Phase 5: Final Verification / Cleanup
+
+## Status (PR3)
+
+13/13 Phase 3 tasks complete. Full backend suite 160/160 (`DB_URL` set, no
+filter, 0 regressions from PR2's 145). Full frontend suite 170/170
+(unchanged from PR1/PR2's baseline, 0 files touched). Ready for
+`sdd-verify` on this PR3 slice, then PR4 (`sdd-apply` Phase 4) targets this
+branch per `stacked-to-main`.
+
 ## Batch 2 (PR2 — Port + Adapters + Slug)
 
 **Scope**: Phase 2 (2.1–2.17), the pre-resolved "PR 2" work unit (`chain

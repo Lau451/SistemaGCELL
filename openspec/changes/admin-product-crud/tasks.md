@@ -67,19 +67,19 @@ Spec coverage: product-persistence (all 5 requirements), product-catalog-schema 
 
 Spec coverage: admin-api-access (all scenarios).
 
-- [ ] 3.1 RED `backend/tests/integration/api/test_admin.py` (extend): no token on `POST`/`PATCH`/either `DELETE` → `401`, repository spy never called, `require_db_pool` never reached.
-- [ ] 3.2 RED same file: valid token + no pool → `503` on each write route, repository not invoked.
-- [ ] 3.3 RED same file: `slug` in a `POST`/`PATCH` body → `422` (`extra="forbid"` proves it, not silent drop).
-- [ ] 3.4 RED same file: valid `POST` → `201` with a server-generated `slug` the client never sent.
-- [ ] 3.5 RED same file: `PATCH`/`DELETE` on an unknown or already-retired id → `404`.
-- [ ] 3.6 RED same file: IDOR across parents — `DELETE /admin/products/{A}/variants/{v_of_B}` → `404`, never `403` (never confirm cross-parent existence).
-- [ ] 3.7 GREEN `backend/src/gcell/api/admin.py`: `AdminVariantInput`, `AdminProductWriteRequest` (`extra="forbid"`, `Decimal` price/cost — never a `float`), `AdminProductResponse`.
-- [ ] 3.8 GREEN `admin.py`: `POST /admin/products` → `CreateProductUseCase`, `201`.
-- [ ] 3.9 GREEN `admin.py`: `PATCH /admin/products/{id}` → `UpdateProductUseCase`, `200`.
-- [ ] 3.10 GREEN `admin.py`: `DELETE /admin/products/{id}` → `soft_delete`, `204`.
-- [ ] 3.11 GREEN `admin.py`: `DELETE /admin/products/{id}/variants/{variant_id}` → `soft_delete_variant`, `204`; `VariantNotFoundError` on cross-parent → `404`.
-- [ ] 3.12 GREEN `admin.py`: exception-to-status mapping per design.md's table (`422` domain `ValueError`/`TypeError`, `404` not-found, `409` `DuplicateProductSlugError`).
-- [ ] 3.13 Regression: `test_health.py`, `test_lifespan.py` run unmodified, stay green.
+- [x] 3.1 RED `backend/tests/integration/api/test_admin.py` (extend): no token on `POST`/`PATCH`/either `DELETE` → `401`, repository spy never called, `require_db_pool` never reached. DONE: `test_no_token_on_write_routes_returns_401_and_never_calls_repository`, parametrized over all 4 write routes; confirmed RED (404 route-not-found, since routes didn't exist) before GREEN.
+- [x] 3.2 RED same file: valid token + no pool → `503` on each write route, repository not invoked. DONE: `test_valid_token_with_no_pool_returns_503_on_write_routes`, same 4-route parametrization.
+- [x] 3.3 RED same file: `slug` in a `POST`/`PATCH` body → `422` (`extra="forbid"` proves it, not silent drop). DONE: `test_slug_in_write_body_is_rejected_with_422`, asserts repository spy never called either.
+- [x] 3.4 RED same file: valid `POST` → `201` with a server-generated `slug` the client never sent. DONE: `test_valid_post_creates_product_with_server_generated_slug`.
+- [x] 3.5 RED same file: `PATCH`/`DELETE` on an unknown or already-retired id → `404`. DONE: 3 tests (`test_patch_unknown_or_retired_product_returns_404`, `test_delete_product_unknown_or_retired_returns_404`, `test_delete_variant_unknown_or_retired_returns_404`).
+- [x] 3.6 RED same file: IDOR across parents — `DELETE /admin/products/{A}/variants/{v_of_B}` → `404`, never `403` (never confirm cross-parent existence). DONE: `test_delete_variant_cross_parent_returns_404_not_403` — two REAL products created via `CreateProductUseCase` against the real local Postgres (`db_pool` fixture, not `db_conn`, to avoid an asyncpg-connection-across-event-loops conflict with `TestClient`'s own portal thread); confirmed RED (404 route-not-found before routes existed) then GREEN (genuine 404 `not_found`, variant B provably untouched afterward); explicit cleanup in `finally`.
+- [x] 3.7 GREEN `backend/src/gcell/api/admin.py`: `AdminVariantInput`, `AdminProductWriteRequest` (`extra="forbid"`, `Decimal` price/cost — never a `float`), `AdminProductResponse`. DONE: byte-consistent with design.md's "Request models" block.
+- [x] 3.8 GREEN `admin.py`: `POST /admin/products` → `CreateProductUseCase`, `201`. DONE.
+- [x] 3.9 GREEN `admin.py`: `PATCH /admin/products/{id}` → `UpdateProductUseCase`, `200`. DONE.
+- [x] 3.10 GREEN `admin.py`: `DELETE /admin/products/{id}` → `RetireProductUseCase`, `204`. DONE (task text said `soft_delete`; implemented via the PR2 use case per this PR's explicit constraint, never the repository method directly).
+- [x] 3.11 GREEN `admin.py`: `DELETE /admin/products/{id}/variants/{variant_id}` → `RetireVariantUseCase`, `204`; `VariantNotFoundError` on cross-parent → `404`. DONE (task text said `soft_delete_variant`; same use-case-layer constraint as 3.10).
+- [x] 3.12 GREEN `admin.py`: exception-to-status mapping per design.md's table (`422` domain `ValueError`/`TypeError`, `404` not-found, `409` `DuplicateProductSlugError`). DONE: single `_execute_or_raise` helper wraps every write route's use-case coroutine.
+- [x] 3.13 Regression: `test_health.py`, `test_lifespan.py` run unmodified, stay green. DONE: both files run unmodified; confirmed green in isolation and as part of the full 160/160 suite.
 
 ## Phase 4: Frontend (PR 4)
 
