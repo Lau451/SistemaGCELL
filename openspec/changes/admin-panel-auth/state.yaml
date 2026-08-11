@@ -87,6 +87,38 @@ pr_progress:
       - "ruff clean; test_lifespan.py/test_health.py confirmed unmodified and green (no regression on the products-postgres-adapter DB-pool-tolerance contract)"
     sdd_attempt_ledger: "settled (state: complete, no reset needed)"
     merged_to_main: 113b489
+  pr2_session_proxy:
+    status: complete
+    tasks: "2.1-2.9 (9/9)"
+    tests: "144/144 passing -- independently re-run by orchestrator; lint and build also clean"
+    actual_changed_lines: 447
+    budget_exception: "447 vs 400-line budget; accepted after ask-on-risk stop"
+    session_interruption_note: >
+      The sdd-apply sub-agent for this PR was interrupted mid-run (process
+      restart, not a task failure). On resume the orchestrator found 143/144
+      tests passing with substantial correct work already on disk, reviewed
+      it by hand (found high quality: isSafeAdminPath's WHATWG URL
+      origin-comparison open-redirect guard, proxy-client.ts's correct
+      two-arg setAll cookie+header handling), then diagnosed and fixed the
+      one remaining RED failure itself rather than relaunching a fresh
+      agent, since the fix was well-understood and narrowly scoped.
+    real_finding: >
+      The RED conformance test (task 2.8) caught a genuine gap: /api/admin/products
+      (the future PR3 proxy route) did not match runtime-caching.ts's
+      isAdminOrMutatingRequest (/api/admin != /admin prefix). Renaming the
+      route under /admin/* was considered and REJECTED -- it would silently
+      break proxy.ts's deliberate /api/admin/* exclusion (which lets that
+      route return its own 401 instead of an HTML redirect). Fixed instead
+      with the minimal correct extension: one ADMIN_API_PREFIX check,
+      mirroring the file's existing CATALOG_API_PREFIX/isCatalogApiRead
+      pattern -- the ONE deliberate edit to that otherwise-pinned file
+      across all 4 changes that have touched this project's frontend.
+      design.md/tasks.md corrected accordingly; pinned SHA256 recomputed.
+    verified_by_orchestrator:
+      - "read isSafeAdminPath, proxy-client.ts, server.ts diff (append-only, existing factories untouched) in full"
+      - "npm run build succeeded, confirmed 'Proxy (Middleware)' registered in the route table -- independent confirmation Next.js recognizes proxy.ts"
+    sdd_attempt_ledger: "settled (state: complete, no reset needed)"
+    merged_to_main: c45b131
 
 design_findings_verified_by_orchestrator:
   - >
