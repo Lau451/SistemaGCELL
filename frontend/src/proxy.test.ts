@@ -28,7 +28,14 @@ import { config, proxy } from "./proxy";
 
 const GET_CLAIMS = vi.fn();
 
-function defaultCreateProxyClient() {
+type CreateProxyClientFn = (
+  request: NextRequest,
+  response: NextResponse,
+) => { auth: { getClaims: typeof GET_CLAIMS } };
+
+function defaultCreateProxyClient(
+  ...[]: Parameters<CreateProxyClientFn>
+): ReturnType<CreateProxyClientFn> {
   return { auth: { getClaims: GET_CLAIMS } };
 }
 

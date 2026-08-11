@@ -126,6 +126,22 @@ async def list_admin_products(
     return [AdminProductResponse.from_domain(product) for product in products]
 
 
+@router.get("/products/{product_id}")
+async def get_admin_product(
+    product_id: UUID,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+) -> AdminProductResponse:
+    # Added post-PR3: design.md's File Changes table always specified this
+    # route, but it was missed from tasks.md's Phase 3 breakdown -- PR4's
+    # edit page needs it directly rather than list-and-filter. Reuses
+    # `get_by_id` (unchanged since PR1, already excludes soft-deleted rows).
+    async with pool.acquire() as conn:
+        product = await PostgresProductRepository(conn).get_by_id(product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    return AdminProductResponse.from_domain(product)
+
+
 class AdminVariantInput(BaseModel):
     model_config = ConfigDict(extra="forbid")  # a client sending `slug` gets 422, not silence
 

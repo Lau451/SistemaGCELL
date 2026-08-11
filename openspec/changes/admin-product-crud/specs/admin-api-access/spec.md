@@ -5,7 +5,9 @@
 ### Requirement: Product Read And Write Endpoints
 
 The `/admin` router MUST expose `GET /admin/products` (unchanged, backed by
-`ProductRepository.list_all`) and MUST now also expose `POST
+`ProductRepository.list_all`) and MUST now also expose `GET
+/admin/products/{id}` (single-product read, backed by
+`ProductRepository.get_by_id`, `404` if unknown or retired), `POST
 /admin/products` (create), `PATCH /admin/products/{id}` (update), `DELETE
 /admin/products/{id}` (soft-delete a product), and `DELETE
 /admin/products/{id}/variants/{variant_id}` (soft-delete a single variant).
@@ -34,6 +36,14 @@ admin endpoint)
   checks
 - WHEN the dependency short-circuits the request
 - THEN `ProductRepository.list_all` MUST NOT be called
+
+#### Scenario: Authenticated GET by id returns one product or 404
+
+- GIVEN a request to `GET /admin/products/{id}` passes JWT verification
+- WHEN the route handler executes
+- THEN it MUST call `ProductRepository.get_by_id` and return the product if
+  an ACTIVE (non-retired) product with that id exists
+- AND it MUST return `404` if no such active product exists
 
 #### Scenario: Authenticated POST creates a product
 

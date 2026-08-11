@@ -86,22 +86,22 @@ Spec coverage: admin-api-access (all scenarios).
 Spec coverage: admin-product-management (forms/UI scenarios).
 Note: ~550 lines estimated; if apply overruns, split into helper+actions / pages+form sub-PRs — flagged, not forced now.
 
-- [ ] 4.1 RED `frontend/src/lib/admin/__tests__/backend-fetch.test.ts`: stubbed `createSessionClient` + spied `fetch` — no claims → `unauthenticated`, `fetch` never called; relays method/body/`Bearer`; `204` → `body: null`; thrown fetch → `backend_unavailable`.
-- [ ] 4.2 GREEN `frontend/src/lib/admin/backend-fetch.ts`: `adminBackendFetch`.
-- [ ] 4.3 GREEN `frontend/src/app/api/admin/products/route.ts`: refactor onto `adminBackendFetch` (GET only, no POST); confirm the existing `route.test.ts` stays green unmodified.
-- [ ] 4.4 RED `frontend/src/app/api/admin/products/[id]/__tests__/route.test.ts` (new): GET-one proxy for the edit page.
-- [ ] 4.5 GREEN `frontend/src/app/api/admin/products/[id]/route.ts`.
-- [ ] 4.6 RED `frontend/src/lib/admin/__tests__/api-error.test.ts`: `extractAdminError` — Pydantic list shape, string shape, unrecognized-body fallback.
-- [ ] 4.7 GREEN `frontend/src/lib/admin/api-error.ts`.
-- [ ] 4.8 RED `frontend/src/app/(admin)/admin/products/actions.test.ts` (new): `adminBackendFetch` mocked — `201`→`revalidatePath`+`redirect`; `422`→returns `{error}`, no redirect; `unauthenticated`→redirect `/admin/login`; variant price/cost relayed as the exact submitted string, never parsed to a JS number (money-precision threat-matrix case).
-- [ ] 4.9 GREEN `frontend/src/app/(admin)/admin/products/actions.ts`: `createProductAction`, `updateProductAction`, `retireProductAction`, `retireVariantAction`.
-- [ ] 4.10 RED `frontend/src/app/(admin)/admin/products/product-form.test.tsx` (new): add a variant row; removing an **unsaved** row is client-only (no request); removing a **saved** row submits the retire action; error rendered with `role="alert"`.
-- [ ] 4.11 GREEN `frontend/src/app/(admin)/admin/products/product-form.tsx`: client component, `useState` rows, `useActionState`; no slug field, ever.
-- [ ] 4.12 GREEN `frontend/src/app/(admin)/admin/products/new/page.tsx`.
-- [ ] 4.13 RED+GREEN `frontend/src/app/(admin)/admin/products/[id]/page.tsx` (+ test): edit page, RSC fetch to `/api/admin/products/{id}`, no slug field exposed.
-- [ ] 4.14 GREEN `frontend/src/app/(admin)/admin/products/page.tsx` (modify): "New product" link, per-row Edit link + Retire form; update `page.test.tsx`.
-- [ ] 4.15 RED extend `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts`: `/admin/products/new`, `/admin/products/{id}`, `/api/admin/products/{id}` → `NetworkOnly`, zero source change to `runtime-caching.ts`.
-- [ ] 4.16 Regression: `route.test.ts`, `columns.test.ts`, `queries.test.ts` and the pre-existing `catalog-route-conformance.test.ts` assertions run unmodified, stay green.
+- [x] 4.1 RED `frontend/src/lib/admin/__tests__/backend-fetch.test.ts`: stubbed `createSessionClient` + spied `fetch` — no claims → `unauthenticated`, `fetch` never called; relays method/body/`Bearer`; `204` → `body: null`; thrown fetch → `backend_unavailable`. DONE: 5 RED cases, confirmed failing (module not found) before GREEN.
+- [x] 4.2 GREEN `frontend/src/lib/admin/backend-fetch.ts`: `adminBackendFetch`. DONE: gate via `getClaims()`, relay via `getSession().access_token`, `204` special-cased before `.json()`, `JSON.stringify(body)` verbatim (no numeric coercion).
+- [x] 4.3 GREEN `frontend/src/app/api/admin/products/route.ts`: refactor onto `adminBackendFetch` (GET only, no POST); confirm the existing `route.test.ts` stays green unmodified. DONE: existing `route.test.ts` untouched, 4/4 still green — refactor invisible to it as designed.
+- [x] 4.4 RED `frontend/src/app/api/admin/products/[id]/__tests__/route.test.ts` (new): GET-one proxy for the edit page. DONE: 4 RED cases, confirmed failing before GREEN.
+- [x] 4.5 GREEN `frontend/src/app/api/admin/products/[id]/route.ts`. DONE: relays directly to a new backend `GET /admin/products/{id}` endpoint. Initially shipped as a list-and-filter workaround since `admin.py` had no such route (design.md listed one in its File Changes table, but it was missed from Phase 3's task breakdown) — orchestrator closed the gap post-PR3-merge by adding `GET /admin/products/{product_id}` to `admin.py` (reuses `get_by_id`, 2 new backend tests) and rewriting this route to relay directly, per user decision.
+- [x] 4.6 RED `frontend/src/lib/admin/__tests__/api-error.test.ts`: `extractAdminError` — Pydantic list shape, string shape, unrecognized-body fallback. DONE: 6 RED cases, confirmed failing before GREEN.
+- [x] 4.7 GREEN `frontend/src/lib/admin/api-error.ts`. DONE: normalizes both `detail` shapes; generic fallback for anything else.
+- [x] 4.8 RED `frontend/src/app/(admin)/admin/products/actions.test.ts` (new): `adminBackendFetch` mocked — `201`→`revalidatePath`+`redirect`; `422`→returns `{error}`, no redirect; `unauthenticated`→redirect `/admin/login`; variant price/cost relayed as the exact submitted string, never parsed to a JS number (money-precision threat-matrix case). DONE: 11 RED cases, confirmed failing before GREEN, including the explicit money-precision test (`"0.10"` and `"1234.567"` proven to survive byte-for-byte as strings).
+- [x] 4.9 GREEN `frontend/src/app/(admin)/admin/products/actions.ts`: `createProductAction`, `updateProductAction`, `retireProductAction`, `retireVariantAction`. DONE: all 4, all relay through `adminBackendFetch`; no `parseFloat`/`Number()` anywhere in the file.
+- [x] 4.10 RED `frontend/src/app/(admin)/admin/products/product-form.test.tsx` (new): add a variant row; removing an **unsaved** row is client-only (no request); removing a **saved** row submits the retire action; error rendered with `role="alert"`. DONE: 6 RED cases, confirmed failing before GREEN.
+- [x] 4.11 GREEN `frontend/src/app/(admin)/admin/products/product-form.tsx`: client component, `useState` rows, `useActionState`; no slug field, ever. DONE.
+- [x] 4.12 GREEN `frontend/src/app/(admin)/admin/products/new/page.tsx`. DONE (no dedicated RED test per tasks.md's own granularity — thin wiring only, exercised transitively by `product-form.test.tsx`).
+- [x] 4.13 RED+GREEN `frontend/src/app/(admin)/admin/products/[id]/page.tsx` (+ test): edit page, RSC fetch to `/api/admin/products/{id}`, no slug field exposed. DONE: 2 RED cases, confirmed failing before GREEN.
+- [x] 4.14 GREEN `frontend/src/app/(admin)/admin/products/page.tsx` (modify): "New product" link, per-row Edit link + Retire form; update `page.test.tsx`. DONE: restructured to one row per PRODUCT (not per variant) — fixes a latent spec gap where a zero-variant product was previously unrenderable; 6/6 tests green.
+- [x] 4.15 RED extend `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts`: `/admin/products/new`, `/admin/products/{id}`, `/api/admin/products/{id}` → `NetworkOnly`, zero source change to `runtime-caching.ts`. DONE: confirmed — the existing `isAdminOrMutatingRequest` prefix matchers already cover all 3 new paths; SHA256 pin on `runtime-caching.ts` unchanged, 12/12 green.
+- [x] 4.16 Regression: `route.test.ts`, `columns.test.ts`, `queries.test.ts` and the pre-existing `catalog-route-conformance.test.ts` assertions run unmodified, stay green. DONE: full frontend suite 211/211 (was 170/170 baseline; +41 new, 0 regressions).
 
 ## Phase 5: Final Verification / Cleanup
 

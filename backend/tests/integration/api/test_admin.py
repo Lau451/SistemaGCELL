@@ -285,6 +285,51 @@ def test_post_with_unslugifiable_name_returns_422_not_500(monkeypatch) -> None:
     assert added == []
 
 
+def test_get_single_admin_product_returns_200(monkeypatch) -> None:
+    # Added post-PR3: GET /admin/products/{id} was in design.md's File
+    # Changes table but missed from tasks.md's Phase 3 breakdown -- PR4's
+    # edit page needs a single-product fetch, not list-and-filter.
+    product = Product(
+        id=uuid4(), slug="test-product", name="Test Product", model="TP-1",
+        variants=[],
+    )
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == str(product.id)
+    assert response.json()["slug"] == "test-product"
+
+
+def test_get_single_admin_product_unknown_or_retired_returns_404(monkeypatch) -> None:
+    async def fake_get_by_id(self, product_id):
+        return None
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{uuid4()}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "not_found"}
+
+
 def test_patch_unknown_or_retired_product_returns_404(monkeypatch) -> None:
     # 3.5 -- PATCH on an unknown/retired id -- `UpdateProductUseCase` raises
     # `ProductNotFoundError` from its own `get_by_id` pre-check.

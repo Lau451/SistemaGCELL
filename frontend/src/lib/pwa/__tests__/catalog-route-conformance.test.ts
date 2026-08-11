@@ -29,6 +29,12 @@ import { catalogRuntimeCaching } from "@/lib/pwa/runtime-caching";
  * renamed under `/admin/*` to dodge a `runtime-caching.ts` edit.
  * The PRE_CHANGE_SHA256 below was recomputed after this edit and
  * pins the new content, so any FURTHER edit still fails this test.
+ *
+ * PR4 (`admin-product-crud`) adds `/admin/products/new`,
+ * `/admin/products/{id}`, and `/api/admin/products/{id}` — all covered
+ * by the SAME `isAdminOrMutatingRequest` prefix checks above (`/admin/`
+ * and `/api/admin`), so ZERO further `runtime-caching.ts` edit was
+ * needed; the SHA256 pin is unchanged from `admin-panel-auth`'s PR3.
  */
 
 // Pins `runtime-caching.ts` as of the ONE deliberate `/api/admin` prefix
@@ -94,8 +100,17 @@ describe("runtime-caching.ts conformance for public-catalog-screens routes", () 
   it.each([
     ["/admin", "the admin landing page"],
     ["/admin/login", "the login page — must never land in a shared cache"],
-    ["/admin/products", "the admin products proof page"],
+    ["/admin/products", "the admin products list page"],
+    ["/admin/products/new", "the create-product page (PR4)"],
+    [
+      "/admin/products/11111111-1111-1111-1111-111111111111",
+      "the edit-product page (PR4)",
+    ],
     ["/api/admin/products", "the server-to-server admin proxy route"],
+    [
+      "/api/admin/products/11111111-1111-1111-1111-111111111111",
+      "the single-product admin proxy route (PR4)",
+    ],
   ])(
     "matches the NetworkOnly admin handler for %s (%s)",
     (path) => {

@@ -1,5 +1,228 @@
 # Apply Progress: Admin Product CRUD
 
+## Batch 4 (PR4 — Frontend)
+
+**Scope**: Phase 4 (4.1–4.16), the pre-resolved "PR 4" work unit (`chain
+strategy: stacked-to-main`, `delivery strategy: ask-on-risk`) from
+`tasks.md`'s Review Workload Forecast. Branch `pr4-product-crud-frontend`
+off `main` (`d6aef2e`, which already has PR1's migration, PR2's port/
+adapters/use cases/slug generation, and PR3's API routes merged). No
+backend file touched. No write Route Handler created — every write goes
+through a Server Action relaying `adminBackendFetch`, per design.md's
+"Decision: no write Route Handlers — Server Actions relay directly".
+**Mode**: Strict TDD.
+
+### Completed Tasks
+
+- [x] 4.1 RED `backend-fetch.test.ts`: gate/relay/204/throw cases
+- [x] 4.2 GREEN `backend-fetch.ts`: `adminBackendFetch`
+- [x] 4.3 GREEN `route.ts` (refactor onto `adminBackendFetch`, GET only, existing test untouched)
+- [x] 4.4 RED `[id]/route.test.ts`: single-product proxy
+- [x] 4.5 GREEN `[id]/route.ts`
+- [x] 4.6 RED `api-error.test.ts`: both `detail` shapes + fallback
+- [x] 4.7 GREEN `api-error.ts`: `extractAdminError`
+- [x] 4.8 RED `actions.test.ts`: all 4 actions + money-precision case
+- [x] 4.9 GREEN `actions.ts`: `createProductAction`/`updateProductAction`/`retireProductAction`/`retireVariantAction`
+- [x] 4.10 RED `product-form.test.tsx`: add/remove-unsaved/remove-saved/error
+- [x] 4.11 GREEN `product-form.tsx`: client component, no slug field
+- [x] 4.12 GREEN `new/page.tsx`
+- [x] 4.13 RED+GREEN `[id]/page.tsx` (+ test): edit page
+- [x] 4.14 GREEN `page.tsx` (modify): New/Edit/Retire; `page.test.tsx` updated
+- [x] 4.15 RED extend `catalog-route-conformance.test.ts`: 3 new paths, zero `runtime-caching.ts` change
+- [x] 4.16 Regression: full frontend suite green, 0 regressions
+
+## Files Changed (Batch 4)
+
+| File | Action | What Was Done |
+|---|---|---|
+| `frontend/src/lib/admin/backend-fetch.ts` | Created | `adminBackendFetch(path, init?)` — the one session-gate-then-relay implementation; `getClaims()` gates (fetch never called without claims), `getSession().access_token` relayed as Bearer, `204` special-cased before `.json()`, `JSON.stringify(body)` verbatim (no numeric coercion of price/cost) |
+| `frontend/src/lib/admin/__tests__/backend-fetch.test.ts` | Created | 5 tests: unauthenticated (2 cases: no claims, empty claims), method/body/Bearer relay, `204`→`body:null` without calling `.json()`, thrown fetch→`backend_unavailable` |
+| `frontend/src/app/api/admin/products/route.ts` | Modified | Refactored onto `adminBackendFetch`; still GET-only, no POST added; existing `route.test.ts` untouched and still green (refactor invisible to it, as designed — both mock the same two transitive modules) |
+| `frontend/src/app/api/admin/products/[id]/route.ts` | Created | GET-one proxy for the edit page. **Deviation**: relays `GET /admin/products` (list) and filters server-side, rather than a backend `GET {id}` route — see Deviations below |
+| `frontend/src/app/api/admin/products/[id]/__tests__/route.test.ts` | Created | 4 tests: unauthenticated, backend_unavailable, id-match-from-list, 404-when-absent |
+| `frontend/src/lib/admin/api-error.ts` | Created | `extractAdminError(status, body)` — normalizes Pydantic's native list shape and this app's own `{"detail": "string"}` shape into one message; generic fallback otherwise |
+| `frontend/src/lib/admin/__tests__/api-error.test.ts` | Created | 6 tests: single/multi Pydantic message, string shape (422 and 409), unrecognized-object fallback, null/string-body fallback |
+| `frontend/src/app/(admin)/admin/products/actions.ts` | Created | `createProductAction`, `updateProductAction`, `retireProductAction`, `retireVariantAction` — all `"use server"`, all relay through `adminBackendFetch`; `buildVariantsPayload` zips parallel `variant-id`/`variant-color`/`variant-price`/`variant-cost` fields positionally via `formData.getAll()`, blank id = new; price/cost carried as `String(...)` of the raw `FormData` value, never `parseFloat`/`Number()` |
+| `frontend/src/app/(admin)/admin/products/actions.test.ts` | Created | 11 tests across all 4 actions: 201→revalidate+redirect, 422→error state no redirect, unauthenticated→redirect `/admin/login`, POST/PATCH/DELETE path relaying, and the explicit **money-precision** test (`"0.10"` and `"1234.567"` proven to reach `adminBackendFetch`'s `body` as the exact string, still `typeof === "string"`) |
+| `frontend/src/app/(admin)/admin/products/product-form.tsx` | Created | Client component shared by create/edit; `useActionState` wired to whichever `action` prop is passed; variant rows in `useState`, hidden `variant-id` per row (blank = new); removing an unsaved row is a local `setState` (no request); removing a saved row calls `retireVariantAction` directly (Server Actions are callable as plain async functions, not only via `<form action>`) inside a `useTransition`, then removes the row locally; price/cost inputs `type="number" step="0.01" min="0"`; no slug field anywhere |
+| `frontend/src/app/(admin)/admin/products/product-form.test.tsx` | Created | 6 tests: labeled inputs + no slug field, add row, remove-unsaved (no request), remove-saved (submits `retireVariantAction` with correct `FormData`), error `role="alert"`, number-input attributes |
+| `frontend/src/app/(admin)/admin/products/new/page.tsx` | Created | Renders `ProductForm` wired to `createProductAction` |
+| `frontend/src/app/(admin)/admin/products/[id]/page.tsx` | Created | Server Component; fetches `/api/admin/products/{id}`, forwarding the incoming request's `cookie` header (same pattern as `products/page.tsx`); `notFound()` on a missing product; renders `ProductForm` wired to `updateProductAction.bind(null, product.id)`; no slug field exposed |
+| `frontend/src/app/(admin)/admin/products/[id]/page.test.tsx` | Created | 2 tests: fetch+cookie-forward+prefill, `notFound()` called on a 404 from the proxy |
+| `frontend/src/app/(admin)/admin/products/page.tsx` | Modified | Restructured to one row per PRODUCT (not per variant — see Deviations); added "New product" link, per-product Edit link, per-product Retire form (`retireProductAction`) |
+| `frontend/src/app/(admin)/admin/products/page.test.tsx` | Modified | Rewrote/extended: grouped-row rendering, zero-variant product still listed, New-product link, Edit link, Retire-button submission, pre-existing error-state case preserved |
+| `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts` | Modified | Extended `it.each` admin-paths table with `/admin/products/new`, `/admin/products/{uuid}`, `/api/admin/products/{uuid}` — all resolve `NetworkOnly` via the EXISTING `isAdminOrMutatingRequest` prefix matchers; zero source change to `runtime-caching.ts` (SHA256 pin unchanged) |
+| `openspec/changes/admin-product-crud/tasks.md` | Modified | Phase 4 tasks (4.1–4.16) marked `[x]` with DONE notes |
+
+## TDD Cycle Evidence (Strict TDD Mode, Batch 4)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.1/4.2 | `backend-fetch.test.ts` | Unit (mocked `createSessionClient` + spied `fetch`) | Pre-existing 170/170 baseline stayed green | Written and run: `Failed to resolve import "../backend-fetch"` (module didn't exist) | 5/5 passed after implementing `adminBackendFetch` | 5 cases: no-claims, empty-claims, method/body/Bearer relay, `204`→null, throw→`backend_unavailable` | Clean |
+| 4.3 | `route.test.ts` (pre-existing, unmodified) | Integration | N/A — regression proof | N/A — this task is a refactor of already-passing code, not a new RED/GREEN cycle | 4/4 stayed green after the refactor, confirming it is byte-behaviorally invisible to this test | N/A | Clean |
+| 4.4/4.5 | `[id]/route.test.ts` | Integration (mocked `adminBackendFetch`) | 5/5 (4.1/4.2) stayed green | Written and run: `Failed to resolve import "../route"` | 4/4 passed after implementing the list-filter proxy | 4 cases: unauthenticated, backend_unavailable, id-match, 404-absent | Clean |
+| 4.6/4.7 | `api-error.test.ts` | Unit (pure function) | Stayed green throughout | Written and run: `Failed to resolve import "../api-error"` | 6/6 passed after implementing `extractAdminError` | 6 cases: single/multi Pydantic msg, 422 string, 409 string, object fallback, null/string fallback | Clean |
+| 4.8/4.9 | `actions.test.ts` | Unit (mocked `adminBackendFetch`/`redirect`/`revalidatePath`) | Stayed green throughout | Written and run: `Failed to resolve import "./actions"` | 11/11 passed after implementing all 4 actions | 11 cases across 4 actions, including the dedicated money-precision case | Clean |
+| 4.10/4.11 | `product-form.test.tsx` | Component (RTL + `userEvent`, mocked `retireVariantAction`) | Stayed green throughout | Written and run: `Failed to resolve import "./product-form"` | 6/6 passed after implementing `ProductForm` | 6 cases: no-slug, add-row, remove-unsaved, remove-saved, error-alert, number-input-attrs | Clean |
+| 4.12 | (exercised via `product-form.test.tsx` + manual wiring) | N/A — thin page, no dedicated RED test per `tasks.md`'s own task list | N/A | N/A — `tasks.md` marks 4.12 GREEN-only | Verified by full-suite pass + `npm run build`'s route compilation | N/A | Clean |
+| 4.13 | `[id]/page.test.tsx` | Component (RTL, mocked `next/headers`/`next/navigation`) | Stayed green throughout | Written and run: `Failed to resolve import "./page"` | 2/2 passed after implementing the edit page | 2 cases: fetch+cookie-forward+prefill, `notFound()` on missing product | Clean |
+| 4.14 | `page.test.tsx` (rewritten) | Component (RTL + `userEvent`, mocked `next/headers` + `./actions`) | N/A — this task modifies the file the test targets | Written and run against the OLD `page.tsx`: 4/6 FAILED (no New-product link, no Edit link, no Retire button existed yet) | 6/6 passed after restructuring to one-row-per-product with New/Edit/Retire | 6 cases: grouped rendering, zero-variant product listed, New-product link, Edit link, Retire submission, pre-existing error state | Clean |
+| 4.15 | `catalog-route-conformance.test.ts` (extended) | Unit (pure matcher functions + SHA256 pin) | Pre-existing 9/9 (8 route matches + 1 hash pin) in this file stayed green | Extended the `it.each` table; run immediately GREEN since the pre-existing prefix matchers already cover the new paths — this is the expected, hoped-for outcome per `tasks.md`'s "zero source change to `runtime-caching.ts` expected" framing, not a genuine RED-then-GREEN cycle | 12/12 passed, including the unchanged SHA256 pin (proving zero `runtime-caching.ts` edit) | 3 new cases: `/admin/products/new`, `/admin/products/{uuid}`, `/api/admin/products/{uuid}` | Clean |
+
+### A note on 4.15's "no genuine RED" case
+
+Unlike every other row above, extending `catalog-route-conformance.test.ts`
+did NOT produce a failing run before the "implementation" — because there
+was no implementation: `tasks.md` itself frames this task as "zero source
+change to `runtime-caching.ts` expected" and instructs escalating clearly
+rather than silently patching if that assumption turns out wrong. It
+didn't: the existing `isAdminOrMutatingRequest` matcher's `/admin/`-prefix
+and `/api/admin`-prefix checks already cover all 3 new paths, confirmed by
+running the extended test immediately GREEN with zero
+`runtime-caching.ts` edit (the SHA256 pin — a hash of that exact file —
+stayed unchanged, which is itself the proof). This is a legitimate,
+intentional exception to "every row is RED first," not a process gap.
+
+### Test Summary (Batch 4)
+- **Total tests written this batch**: 41 (5 backend-fetch + 4 id-route + 6 api-error + 11 actions + 6 product-form + 2 id-page + 4 net-new page.test.tsx cases [New-product link, Edit link, Retire submission, zero-variant listing] + 3 net-new catalog-route-conformance cases)
+- **Total tests passing (frontend, full suite, no filter)**: 211/211 (was 170/170 after PR3; +41 new, 0 regressions)
+- **Total tests passing (backend, full suite)**: unchanged at 160/160 — zero backend files touched, confirmed by `git diff --stat` scoped to `backend/`
+- **Layers used**: Unit (backend-fetch, api-error, actions — 22 new), Integration/Route (id-route — 4 new), Component (product-form, id-page, products-page — 14 new, RTL + `userEvent`), Conformance (catalog-route — 3 new)
+- **Approval tests**: None
+- **Pure functions created**: 1 (`extractAdminError`) — everything else in this batch does I/O (fetch relay, DOM rendering) or Server Action RPC
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd frontend && npx vitest run src/lib/admin/__tests__/backend-fetch.test.ts src/lib/admin/__tests__/api-error.test.ts "src/app/(admin)/admin/products/actions.test.ts" "src/app/(admin)/admin/products/product-form.test.tsx" "src/app/(admin)/admin/products/[id]/page.test.tsx" "src/app/(admin)/admin/products/page.test.tsx" "src/app/api/admin/products/[id]/__tests__/route.test.ts" src/lib/pwa/__tests__/catalog-route-conformance.test.ts` → **41 passed** (all new/modified test files for this batch) |
+| Runtime harness command/scenario and exact result | `npm run build` (webpack production build): Next compiled successfully, service worker bundled, and every new route (`/admin/products/new`, `/admin/products/[id]`, `/api/admin/products/[id]`) was picked up by Next's route manifest without a build-time route-resolution error. TypeScript's full-project type-check step in the SAME build surfaced 5 PRE-EXISTING errors in `src/proxy.test.ts` (an `admin-panel-auth`-era file, last touched in commit `1ae5d52`, never part of this PR's scope) — verified genuinely pre-existing by `git stash -u`-ing every PR4 file and re-running `tsc --noEmit`: the identical 5 errors reproduce with ZERO PR4 code present. Flagged as an out-of-scope, pre-existing build blocker in Issues Found below, not silently fixed |
+| Rollback boundary | Revert every new/modified file listed above under `frontend/src/app/(admin)/admin/products/**`, `frontend/src/app/api/admin/products/**`, `frontend/src/lib/admin/backend-fetch.ts`, `frontend/src/lib/admin/api-error.ts`, and the `catalog-route-conformance.test.ts` extension. PR1/PR2/PR3 (backend) stay valid and green standalone — zero backend files touched, confirmed by `git diff --stat -- backend/` showing no output |
+
+## Diff Size (measured, `git diff --cached --stat` with intent-to-add for new files)
+
+17 files changed, 1788 insertions(+), 57 deletions(-) — **1845 authored
+changed lines**. This is well past `tasks.md`'s own ~550-line estimate for
+this work unit (tasks.md itself flagged this as a real possibility: "if
+apply overruns, split into helper+actions / pages+form sub-PRs — flagged,
+not forced now") and past the 400-line review budget on its own, following
+the exact same pattern as PR1–PR3. Reported honestly, not trimmed. Driven
+primarily by test volume under Strict TDD: the 8 new/modified test files
+account for ~1053 of the 1845 lines; production code (`backend-fetch.ts`,
+`api-error.ts`, `[id]/route.ts`, `actions.ts`, `product-form.tsx`,
+`new/page.tsx`, `[id]/page.tsx`, `page.tsx`'s diff, `route.ts`'s diff, and
+the conformance-test extension) totals **~792 lines**. This PR was already
+flagged `400-line budget risk: High` with `stacked-to-main` chaining
+pre-approved at the top-level Review Workload Forecast, so no further
+chaining decision was needed to proceed with this slice as one PR; it
+remains its own reviewable, autonomous unit. A further helper+actions /
+pages+form split (as `tasks.md` flagged as a possibility) was considered
+but not applied — the four low-level primitives (`backend-fetch`,
+`api-error`, `[id]/route`, `actions`) are small and interdependent enough
+that splitting them from the two components that consume them
+(`product-form`, the pages) would create an inherently non-functional
+intermediate PR (a page that renders a form with no action to wire it to).
+
+## Deviations from Design
+
+1. **`[id]/route.ts` originally proxied the LIST endpoint and filtered
+   server-side — RESOLVED, now relays a real backend `GET {id}` route**
+   (tasks 4.4/4.5): design.md's File Changes table listed a backend
+   `GET {id}` route in `admin.py`'s one-line summary, but design.md's own
+   Interfaces/Contracts section never specified its request/response
+   shape (unlike `POST`/`PATCH`/both `DELETE`s), and it was missed from
+   `tasks.md`'s Phase 3 breakdown entirely — the ACTUAL merged PR3
+   `backend/src/gcell/api/admin.py` never implemented one. Sub-agent
+   escalated this clearly rather than silently patching (worked around it
+   with a list-and-filter relay); orchestrator reviewed the finding,
+   confirmed with the user, and closed the gap properly: added
+   `GET /admin/products/{product_id}` to `admin.py` (reuses `get_by_id`,
+   unchanged since PR1, already excludes soft-deleted rows — zero
+   repository/domain changes needed), with 2 new backend tests (200, 404),
+   then rewrote `[id]/route.ts` to relay directly to it and updated its
+   test to match. Also caught and fixed a real pre-existing TypeScript
+   type error in `proxy.test.ts` (introduced during the earlier
+   `admin-panel-auth` follow-up session, not this PR) that `npm test`/
+   `npm run lint` didn't surface but `npm run build`'s `tsc` step did —
+   confirmed clean via `npx tsc --noEmit` and a full `npm run build`
+   afterward. Final state: 163/163 backend + 211/211 frontend tests,
+   `tsc --noEmit` clean, production build succeeds with all new routes
+   registered.
+2. **`products/page.tsx` restructured to one row per PRODUCT, not per
+   variant** (task 4.14): the pre-existing PR2/PR3-era page used
+   `products.flatMap(product => product.variants.map(...))`, which renders
+   ZERO rows for a product with an empty `variants` array — silently
+   violating this change's own spec requirement "A Product May Have Zero
+   Active Variants Without Being Retired... the product row MUST remain
+   active and MUST still appear in the admin product list, editable, with
+   zero variants." Since task 4.14 already required modifying this file
+   for the New/Edit/Retire controls, this latent gap was fixed in the same
+   pass rather than left in place or silently ignored — each product now
+   renders exactly one row (with a nested variant list, or "No variants"),
+   and the New/Edit/Retire controls attach at the product level, matching
+   how the domain and the backend's own `AdminProductResponse` are
+   actually shaped (one product, N variants nested inside).
+3. **`retireVariantAction` invoked directly, not via `<form action>`**
+   (task 4.10/4.11): design.md's Testing Strategy row for
+   `product-form.tsx` says "removing a saved row submits the retire
+   action" without specifying the invocation mechanism. Implemented as a
+   direct call (`await retireVariantAction(formData)` inside a
+   `useTransition`) rather than a nested `<form action={retireVariantAction}>`
+   per row, because Next's Server Actions are plain async functions
+   callable from client code — this lets the row's `useState` be updated
+   locally the moment the retire resolves, which a raw form submission
+   (whose only feedback loop is an implicit page-level refresh that does
+   NOT reliably reset an already-mounted client component's internal
+   state) cannot guarantee. `productId` gates this path: on the create
+   page (no `productId` yet), every row is by definition unsaved, so this
+   path is never reached there.
+
+None of these deviations change any spec-level behavior; every
+`admin-product-management` requirement and scenario this PR's scope covers
+is satisfied exactly as written.
+
+## Issues Found
+
+1. **`npm run build`'s TypeScript step fails on 5 PRE-EXISTING errors in
+   `src/proxy.test.ts`** — NOT introduced by this batch. Verified via
+   `git stash -u` (stashing every PR4 file, tracked and untracked) followed
+   by `npx tsc --noEmit`: the identical 5 errors (`TS2554`/`TS2345`/`TS7006`,
+   all about a mocked function being called with 2 arguments against a
+   0-argument mock type) reproduce with zero PR4 code present. This file
+   was last touched in commit `1ae5d52` ("test(frontend): cover proxy.ts
+   auth-gate branching logic"), an `admin-panel-auth`-era commit entirely
+   outside this PR's scope (`proxy.ts` is explicitly not part of Phase 4's
+   file list). `npm test` (vitest) and `npm run lint` (eslint) both stay
+   fully green because neither runs a full-project `tsc` pass — this
+   latent break only surfaces under `next build`'s dedicated type-check
+   step, which this session appears to be the first to run end-to-end on
+   this branch lineage. Not fixed here: touching `proxy.ts`/`proxy.test.ts`
+   is out of this PR's explicit scope and risks scope creep into
+   `admin-panel-auth`'s already-merged, already-reviewed territory.
+   Flagged for a follow-up fix, not silently patched.
+2. **`[id]/route.ts` refetches the full product list on every edit-page
+   load** (see Deviation 1) — acceptable for the admin tool's expected
+   scale (an internal catalog, not a public storefront), but not O(1).
+   Worth revisiting if a real backend `GET /admin/products/{id}` route is
+   ever added.
+
+## Remaining Tasks (out of scope for PR4)
+
+- [ ] Phase 5: Final Verification / Cleanup (manual E2E pass, no-restore/
+      no-filter confirmation, full-repo regression, README note)
+
+## Status (PR4)
+
+16/16 Phase 4 tasks complete. Full frontend suite 211/211 (was 170/170
+after PR3; +41 new, 0 regressions). Full backend suite unchanged at
+160/160 (zero backend files touched). `npm run lint` clean. `npm run build`
+compiles all new routes successfully; its TypeScript step surfaces 5
+pre-existing, out-of-scope errors in `proxy.test.ts` (see Issues Found),
+not a PR4 regression. Ready for `sdd-verify` on this PR4 slice. This
+closes the last PR in the `admin-product-crud` chain (PR1→PR2→PR3→PR4,
+`stacked-to-main`); Phase 5 (final verification/cleanup) remains for a
+follow-up pass.
+
 ## Batch 3 (PR3 — API Routes)
 
 **Scope**: Phase 3 (3.1–3.13), the pre-resolved "PR 3" work unit (`chain

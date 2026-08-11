@@ -15,53 +15,34 @@
  * `admin-api-access` spec's "never reaches the repository" requirement
  * mirrored at this layer.
  *
- * `getClaims()` (server-validated) gates the request; `getSession()` is
- * read only afterwards, purely to extract the opaque `access_token` to
- * relay — never trusted as an authorization decision on its own (see
- * design.md "Decision: `getClaims()` for the gate, `getSession()` only
- * to extract the token").
+ * Refactored (PR4) onto the shared `adminBackendFetch` relay — the same
+ * gate-then-relay logic, now centralized in `lib/admin/backend-fetch.ts`
+ * so the write Server Actions (`actions.ts`) don't duplicate it. This is
+ * a read-only extension: still GET-only, no POST added here (writes go
+ * exclusively through Server Actions — design.md "Decision: no write
+ * Route Handlers").
  *
- * @see design.md "`GET /api/admin/products`"
+ * @see design.md "`GET /api/admin/products`", "Frontend relay"
  */
 import { NextResponse } from "next/server";
-import { getBackendUrl } from "@/lib/admin/env";
-import { createSessionClient } from "@/lib/supabase/server";
-
-function unauthenticated() {
-  return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-}
+import { adminBackendFetch } from "@/lib/admin/backend-fetch";
 
 export async function GET() {
-  const supabase = await createSessionClient();
+  const result = await adminBackendFetch("/admin/products");
 
-  const { data: claimsData, error: claimsError } =
-    await supabase.auth.getClaims();
-  if (claimsError || !claimsData?.claims) {
-    return unauthenticated();
+  if (result.outcome === "unauthenticated") {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) {
-    return unauthenticated();
-  }
-
-  let upstream: Response;
-  try {
-    upstream = await fetch(`${getBackendUrl()}/admin/products`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      cache: "no-store",
-    });
-  } catch {
+  if (result.outcome === "backend_unavailable") {
     return NextResponse.json(
       { error: "backend_unavailable" },
       { status: 502 },
     );
   }
 
-  return NextResponse.json(await upstream.json(), {
-    status: upstream.status,
+  return NextResponse.json(result.body, {
+    status: result.status,
     headers: { "Cache-Control": "private, no-store" },
   });
 }
