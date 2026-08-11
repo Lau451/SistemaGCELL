@@ -16,7 +16,11 @@ from uuid import UUID
 
 import asyncpg
 
-from gcell.products.application.exceptions import DuplicateProductSlugError
+from gcell.products.application.exceptions import (
+    DuplicateProductSlugError,
+    ProductNotFoundError,
+    VariantNotFoundError,
+)
 from gcell.products.domain.product import Product, ProductVariant
 from gcell.shared.infrastructure.postgres import transaction
 
@@ -57,6 +61,34 @@ _INSERT_VARIANT = """
     INSERT INTO product_variants (id, product_id, color, price, cost)
     VALUES ($1, $2, $3, $4, $5)
 """
+
+_UPDATE_PRODUCT_FIELDS = """
+    UPDATE products SET name = $2, model = $3
+    WHERE id = $1 AND deleted_at IS NULL
+"""
+
+_UPSERT_VARIANT = """
+    INSERT INTO product_variants (id, product_id, color, price, cost)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (id) DO UPDATE SET color = $3, price = $4, cost = $5
+"""
+
+_SOFT_DELETE_PRODUCT = """
+    UPDATE products SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
+"""
+
+_SOFT_DELETE_VARIANT = """
+    UPDATE product_variants SET deleted_at = now()
+    WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL
+"""
+
+_SLUG_EXISTS = "SELECT EXISTS(SELECT 1 FROM products WHERE slug = $1)"
+
+
+def _rows_affected(command_tag: str) -> int:
+    """asyncpg's `execute()` returns a command tag like `"UPDATE 1"` --
+    parse the trailing row count."""
+    return int(command_tag.rsplit(" ", 1)[-1])
 
 
 def _row_to_variant(row: asyncpg.Record) -> ProductVariant:
@@ -148,3 +180,42 @@ class PostgresProductRepository:
     async def list_all(self) -> list[Product]:
         rows = await self._conn.fetch(_SELECT_ALL)
         return _rows_to_products(rows)
+
+    async def update(self, product: Product) -> None:
+        """One transaction: field edit, then per-variant upsert. `slug` is
+        absent from the `SET` list -- frozen. `deleted_at` is never in the
+        variant `SET` list either -- a replayed body can't resurrect a
+        retired variant. Raises `ProductNotFoundError` if the product row
+        is unknown or already retired (0 rows affected by the field
+        `UPDATE`) -- checked BEFORE touching any variant, so an unknown/
+        retired id fails atomically without side effects.
+        """
+        async with transaction(self._conn) as conn:
+            result = await conn.execute(
+                _UPDATE_PRODUCT_FIELDS, product.id, product.name, product.model
+            )
+            if _rows_affected(result) == 0:
+                raise ProductNotFoundError(product.id)
+            if product.variants:
+                await conn.executemany(
+                    _UPSERT_VARIANT,
+                    [
+                        (variant.id, product.id, variant.color, variant.price, variant.cost)
+                        for variant in product.variants
+                    ],
+                )
+
+    async def soft_delete(self, product_id: UUID) -> None:
+        result = await self._conn.execute(_SOFT_DELETE_PRODUCT, product_id)
+        if _rows_affected(result) == 0:
+            raise ProductNotFoundError(product_id)
+
+    async def soft_delete_variant(self, product_id: UUID, variant_id: UUID) -> None:
+        result = await self._conn.execute(
+            _SOFT_DELETE_VARIANT, variant_id, product_id
+        )
+        if _rows_affected(result) == 0:
+            raise VariantNotFoundError(variant_id, product_id)
+
+    async def slug_exists(self, slug: str) -> bool:
+        return await self._conn.fetchval(_SLUG_EXISTS, slug)

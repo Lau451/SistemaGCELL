@@ -26,3 +26,33 @@ class ProductRepository(Protocol):
     async def get_by_slug(self, slug: str) -> Product | None: ...
 
     async def list_all(self) -> list[Product]: ...
+
+    async def update(self, product: Product) -> None:
+        """Persist field edits and add/update the given variants, in ONE
+        transaction. NEVER deletes or retires a variant. Raises
+        `ProductNotFoundError` if no ACTIVE product with that id exists.
+        `slug` is never accepted or altered -- it is frozen at creation.
+        """
+        ...
+
+    async def soft_delete(self, product_id: UUID) -> None:
+        """Retire a product via `UPDATE` (never a `DELETE`), cascading to
+        its variants at read time. Raises `ProductNotFoundError` if no
+        ACTIVE product with that id exists.
+        """
+        ...
+
+    async def soft_delete_variant(self, product_id: UUID, variant_id: UUID) -> None:
+        """Retire a single variant of `product_id` via `UPDATE`. Raises
+        `VariantNotFoundError` if the variant does not exist, does not
+        belong to `product_id`, or is already retired -- never a `403` that
+        would confirm cross-parent existence.
+        """
+        ...
+
+    async def slug_exists(self, slug: str) -> bool:
+        """Whether `slug` is already taken by ANY product. Ignores
+        `deleted_at` ON PURPOSE -- mirrors the global unique index, so a
+        retired product's slug is never handed to a different product.
+        """
+        ...
