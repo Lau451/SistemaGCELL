@@ -74,6 +74,20 @@ critical_finding_before_apply:
     Supabase Auth instance only. Not a real external account, not committed
     anywhere, meaningless outside this dev machine's Docker containers.
 
+pr_progress:
+  pr1_jwt_backend:
+    status: complete
+    tasks: "1.1-1.12 (12/12); Phase 0 (0.1-0.2) also complete, done by orchestrator pre-apply"
+    tests: "98/98 passing against real local Postgres -- independently re-run by orchestrator"
+    actual_changed_lines: 751
+    budget_exception: "751 vs 400-line budget; accepted after ask-on-risk stop, same Strict-TDD test-density pattern"
+    verified_by_orchestrator:
+      - "read auth.py in full: PyJWKClient lazy-cached correctly, ES256/exp/iss/aud all checked, generic 401 across every failure mode, fails closed (500) on misconfiguration"
+      - "confirmed the algorithm-confusion test hand-crafts a real forged HS256 token via stdlib hmac (PyJWT's own encode() refuses to sign with a PEM key under HS256, so the test correctly simulates a real attacker unconstrained by that guard)"
+      - "ruff clean; test_lifespan.py/test_health.py confirmed unmodified and green (no regression on the products-postgres-adapter DB-pool-tolerance contract)"
+    sdd_attempt_ledger: "settled (state: complete, no reset needed)"
+    merged_to_main: 113b489
+
 design_findings_verified_by_orchestrator:
   - >
     Confirmed against frontend/node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md:
