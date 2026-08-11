@@ -4,15 +4,24 @@
 
 Protect the FastAPI `/admin` router with mandatory, fully-checked JWT
 verification, expose exactly one read-only proof endpoint
-(`GET /admin/products`), and guarantee the signing secret never reaches the
-client.
+(`GET /admin/products`), and keep all backend-only auth configuration
+server-side.
+
+**Signing scheme note (corrected against a real token before apply):**
+the local Supabase Auth instance signs tokens with **ES256** (asymmetric,
+per-project key pair), not HS256/a shared secret as originally assumed —
+verification uses the PUBLIC key served at
+`/auth/v1/.well-known/jwks.json` via a `PyJWKClient`, never a secret the
+backend must protect from disclosure. See `design.md`'s corrected
+"Decision: PyJWT, not python-jose" section for the full finding.
 
 ## Requirements
 
 ### Requirement: JWT Verification Dependency On The Admin Router
 Every route under the `/admin` router prefix MUST be gated by a FastAPI
 `Depends` dependency that verifies, on every request, ALL FOUR of: (1) the
-token signature using HS256 and the backend-only `JWT_SECRET`, (2) the
+token signature using ES256 against the public key resolved from the
+Supabase Auth JWKS endpoint (matched by the token's `kid`), (2) the
 `exp` claim has not passed, (3) the `iss` claim matches the expected
 issuer, and (4) the `aud` claim matches the expected audience. A request
 MUST be rejected with `401 Unauthorized` unless all four checks pass.
@@ -43,12 +52,20 @@ MUST be rejected with `401 Unauthorized` unless all four checks pass.
 
 #### Scenario: Tampered signature is rejected
 - GIVEN a request bearing a JWT whose payload was altered after signing,
-  invalidating the HS256 signature
+  invalidating the ES256 signature
 - WHEN the request reaches the `/admin` router
 - THEN the dependency MUST reject the request with `401 Unauthorized`
 
+#### Scenario: Algorithm-confusion signature is rejected
+- GIVEN a request bearing a JWT signed with `alg: HS256` using the public
+  EC key's bytes as an HMAC secret (the classic asymmetric-to-symmetric
+  algorithm-confusion attack)
+- WHEN the request reaches the `/admin` router
+- THEN the dependency MUST reject the request with `401 Unauthorized`,
+  because the verification allowlist accepts only `ES256`
+
 #### Scenario: Valid token on all four checks is accepted
-- GIVEN a request bearing a JWT with a correct HS256 signature, unexpired
+- GIVEN a request bearing a JWT with a correct ES256 signature, unexpired
   `exp`, correct `iss`, and correct `aud`
 - WHEN the request reaches the `/admin` router
 - THEN the dependency MUST allow the request through to the route handler
@@ -70,20 +87,28 @@ update, or delete admin endpoint in this change.
 - WHEN the dependency short-circuits the request
 - THEN `ProductRepository.list_all` MUST NOT be called
 
-### Requirement: JWT Secret Is Backend-Only
-`JWT_SECRET` MUST be read only from backend server-side environment
+### Requirement: Backend Auth Configuration Stays Server-Side
+`SUPABASE_JWKS_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`, and
+`BACKEND_URL` MUST be read only from backend/server-side environment
 configuration and MUST NEVER be defined as, or exposed through, a
 `NEXT_PUBLIC_*` environment variable or any value shipped in the frontend
-client bundle.
+client bundle. This is an architectural boundary, not a secrecy
+requirement — under ES256/JWKS verification, the JWKS URL and its public
+key ARE meant to be publicly fetchable (that is the point of a JWKS
+endpoint); the invariant being protected here is that the frontend never
+performs its own JWT verification or bypasses the backend as the single
+trust boundary, not that a value could be used to forge a token.
 
-#### Scenario: Secret absent from client bundle
+#### Scenario: Backend config absent from client bundle
 - GIVEN the frontend build output
 - WHEN environment variable usage is inspected
-- THEN no `NEXT_PUBLIC_*` variable SHALL carry the `JWT_SECRET` value
-- AND no client-side bundle SHALL contain the literal secret value
+- THEN no `NEXT_PUBLIC_*` variable SHALL carry `SUPABASE_JWKS_URL`,
+  `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`, or `BACKEND_URL`
+- AND no client-side bundle SHALL contain those literal values
 
-#### Scenario: Secret is available to the backend verification dependency
+#### Scenario: Configuration is available to the backend verification dependency
 - GIVEN the FastAPI process environment
 - WHEN the JWT verification dependency initializes
-- THEN it MUST read `JWT_SECRET` from backend-only server environment
+- THEN it MUST read `SUPABASE_JWKS_URL`, `SUPABASE_JWT_ISSUER`, and
+  `SUPABASE_JWT_AUDIENCE` from backend-only server environment
   configuration, not from any request or client-supplied value

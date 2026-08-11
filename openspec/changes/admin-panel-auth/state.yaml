@@ -39,6 +39,41 @@ engram_sync_fix: >
   Re-upserted via mem_save (observation stays id 319) to match the corrected
   on-disk specs/admin-authentication/spec.md before proceeding to apply.
 
+critical_finding_before_apply:
+  what: >
+    Design/spec/tasks all assumed HS256 signing with a shared JWT_SECRET. Before
+    launching sdd-apply for PR1, the orchestrator completed Phase 0 itself (the
+    manual admin-user provisioning tasks.md flagged as blocking): provisioned the
+    one admin Supabase Auth user via POST /auth/v1/signup (admin@gcell.local,
+    local dev-only credential, inert outside this Docker instance), decoded the
+    real issued access token, and found alg: ES256 (asymmetric, per-project key),
+    NOT HS256. iss (http://127.0.0.1:54321/auth/v1) and aud (authenticated)
+    matched the original assumption exactly -- only alg was wrong. Confirmed
+    GET /auth/v1/.well-known/jwks.json serves the matching public key by kid.
+  why_this_matters: >
+    This is exactly the "escalate, not patch" scenario design.md's own Open
+    Questions section called out. Had apply proceeded on the HS256 assumption,
+    verify_admin_jwt would have rejected every real token -- a completely
+    non-functional auth system discovered only during manual E2E testing, or
+    worse, "fixed" by weakening verification rather than correcting the actual
+    signing scheme.
+  resolution: >
+    Corrected design.md (Decision section, verify_admin_jwt pseudocode, testing
+    strategy -- now generates a throwaway ES256 test keypair and monkeypatches
+    PyJWKClient rather than needing live Auth for unit tests, threat matrix, open
+    questions), both spec files (admin-authentication already had proxy.ts fixed;
+    admin-api-access's JWT-check requirements/scenarios rewritten to ES256/JWKS,
+    added an algorithm-confusion-attack scenario, renamed the "secret" requirement
+    to "backend auth configuration stays server-side" since ES256/JWKS has no
+    secret to leak, only an architectural server-side-trust-boundary invariant),
+    and tasks.md (Phase 0 marked complete with the finding, Phase 1 tasks 1.1-1.3
+    and 1.10 rewritten for PyJWKClient/jwks_url() instead of jwt_secret()). All
+    three Engram topic_keys (spec, design, tasks) re-synced to match.
+  admin_user_credential: >
+    admin@gcell.local / local-dev-only password, created in the local Docker
+    Supabase Auth instance only. Not a real external account, not committed
+    anywhere, meaningless outside this dev machine's Docker containers.
+
 design_findings_verified_by_orchestrator:
   - >
     Confirmed against frontend/node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md:

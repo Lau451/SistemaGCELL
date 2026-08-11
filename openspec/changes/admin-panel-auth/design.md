@@ -17,14 +17,23 @@ Three layers, one trust boundary. (1) `frontend/src/proxy.ts` does an *optimisti
 **Choice**: `(admin)` is a layout-only group with a literal `admin` segment inside it.
 **Rationale**: `initial-scaffolding/design.md:34` pins "**Admin URL contract**: the `(admin)` route group serves under `/admin/*`". A route group adds **no** URL segment, so the proposal's `app/(admin)/login/page.tsx` would serve `/login` — which does **not** match `isAdminOrMutatingRequest` in `runtime-caching.ts:42` and would fall through to Serwist's `defaultCache`, caching a login page in a shared cache. `/admin/login` is `NetworkOnly` by matcher rule #1 with **zero changes** to `runtime-caching.ts` (verified: `url.pathname.startsWith("/admin/")`).
 
-### Decision: PyJWT, not python-jose
+### Decision: PyJWT, not python-jose — CORRECTED to ES256/JWKS, not HS256/shared-secret
+
+**This design originally assumed HS256 with the shared `JWT_SECRET`. That assumption was proven wrong by the orchestrator before `sdd-apply` started**, per this doc's own "Open Questions" mandate to decode a real local token first. A real token was minted via `POST /auth/v1/signup` against the running local Supabase Auth (see the Prerequisite section below) and decoded:
+
+- Header: `{"alg":"ES256","kid":"b81269f1-...","typ":"JWT"}` — **ES256 (asymmetric EC), not HS256**.
+- Payload: `iss: "http://127.0.0.1:54321/auth/v1"`, `aud: "authenticated"` — both match the original assumption exactly, only `alg` was wrong.
+- `GET /auth/v1/.well-known/jwks.json` (confirmed reachable, no auth beyond the anon `apikey` header) returns the matching public key by `kid`: `{"alg":"ES256","kty":"EC","crv":"P-256","kid":"b81269f1-...","x":"...","y":"..."}`.
+
+This is the modern Supabase default (per-project asymmetric signing keys), not a misconfiguration to "fix" — the local stack genuinely does not use the legacy shared `JWT_SECRET` for signing. Verification must fetch the JWKS and verify with the matching public key, not a shared secret.
 
 | Option | Tradeoff | Decision |
 |---|---|---|
-| `pyjwt` | HS256 needs only stdlib `hmac`; typed exception hierarchy (`ExpiredSignatureError`, `InvalidIssuerError`, `InvalidAudienceError`, `InvalidSignatureError`); `options={"require": [...]}` enforces claim presence | **Chosen** (`pyjwt>=2.10`) |
-| `python-jose` | Adds JWE/JWK surface we never use; historic algorithm-confusion + JWE DoS CVEs; needs a crypto backend extra | Rejected |
+| `pyjwt` + `PyJWKClient` | `PyJWKClient(jwks_url).get_signing_key_from_jwt(token)` fetches/caches the JWKS and resolves the correct key by the token's `kid` automatically; typed exception hierarchy (`ExpiredSignatureError`, `InvalidIssuerError`, `InvalidAudienceError`, `InvalidSignatureError`, `PyJWKClientError`); `options={"require": [...]}` enforces claim presence; `algorithms=["ES256"]` still blocks `alg=none`/algorithm-confusion | **Chosen** (`pyjwt>=2.10`) |
+| `python-jose` | Adds JWE surface never used; historic algorithm-confusion + JWE DoS CVEs; needs a crypto backend extra | Rejected |
+| Hardcode the public key (skip JWKS fetch) | Avoids one HTTP call per verification (mitigated by `PyJWKClient`'s built-in cache); but silently breaks on any future key rotation with no clear failure signal | Rejected |
 
-Only requirement is HS256 verification of GoTrue-issued tokens. Smallest correct dependency wins.
+PyJWT's `PyJWKClient` is the correct, well-supported pattern for this — not exotic. The dependency choice (PyJWT over python-jose) still stands; only the signing-key acquisition and `algorithms=` allowlist change.
 
 ### Decision: per-request `503` dependency guard, not startup abort
 
@@ -51,7 +60,7 @@ Browser ─GET /admin/products──▶ proxy.ts  (Node runtime, matcher /admin/
                                         │ Authorization: Bearer <jwt>
                                         ▼
                     FastAPI  /admin  Depends(verify_admin_jwt)   ← trust boundary
-                             │ sig(HS256,JWT_SECRET) + exp + iss + aud
+                             │ sig(ES256, JWKS pubkey by kid) + exp + iss + aud
                              └─▶ Depends(require_db_pool) ─None─▶ 503
                                         ▼
                              pool.acquire() → PostgresProductRepository.list_all()
@@ -71,13 +80,13 @@ Browser ─GET /admin/products──▶ proxy.ts  (Node runtime, matcher /admin/
 | `frontend/src/app/(admin)/admin/login/page.tsx` | Create | Login form + `signInAction` Server Action |
 | `frontend/src/app/(admin)/admin/products/page.tsx` | Create | Proof page consuming the proxy route |
 | `frontend/src/app/api/admin/products/route.ts` | Create | Server-to-server proxy |
-| `backend/src/gcell/shared/infrastructure/config.py` | Modify | `jwt_secret()`, `jwt_issuer()`, `jwt_audience()` |
-| `backend/src/gcell/shared/infrastructure/auth.py` | Create | `verify_admin_jwt`, `AdminIdentity` |
+| `backend/src/gcell/shared/infrastructure/config.py` | Modify | `jwks_url()`, `jwt_issuer()`, `jwt_audience()` (NOT `jwt_secret()` — corrected, see ES256/JWKS decision above) |
+| `backend/src/gcell/shared/infrastructure/auth.py` | Create | `verify_admin_jwt`, `AdminIdentity`; module-level `PyJWKClient(jwks_url())` instance (cached across requests) |
 | `backend/src/gcell/shared/infrastructure/dependencies.py` | Create | `require_db_pool` |
 | `backend/src/gcell/api/admin.py` | Create | `/admin` router + `GET /admin/products` (follows the existing `api/health.py` router convention, not the proposal's guessed `products/infrastructure/` path) |
 | `backend/src/gcell/main.py` | Modify | `include_router(admin_router)`; refresh the stale lifespan comment |
 | `backend/pyproject.toml` / `uv.lock` | Modify | `pyjwt>=2.10` |
-| `frontend/.env.example`, `backend/.env.example` | Modify/Create | `BACKEND_URL`, `JWT_SECRET`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` |
+| `frontend/.env.example`, `backend/.env.example` | Modify/Create | `BACKEND_URL`, `SUPABASE_JWKS_URL` (NOT `JWT_SECRET` — corrected), `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` |
 
 ## Interfaces / Contracts
 
@@ -174,24 +183,26 @@ export async function GET() {
 
 `BACKEND_URL` defaults to **`http://127.0.0.1:8000`**, not `localhost`. Node ≥18 resolves `localhost` verbatim and may pick `::1`, while `uvicorn` binds `127.0.0.1` by default → intermittent `ECONNREFUSED`. `BACKEND_URL` is server-only; adding a `NEXT_PUBLIC_` twin would defeat the whole proxy shape.
 
-### `verify_admin_jwt`
+### `verify_admin_jwt` — CORRECTED to ES256/JWKS (see decision above)
 
 ```python
 _bearer = HTTPBearer(auto_error=False)
+_jwks_client = PyJWKClient(jwks_url())          # module-level: caches keys across requests
 
 def verify_admin_jwt(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> AdminIdentity:
-    secret, issuer, audience = jwt_secret(), jwt_issuer(), jwt_audience()
-    if not secret or not issuer:
+    issuer, audience = jwt_issuer(), jwt_audience()
+    if not issuer:
         raise HTTPException(500, "auth_misconfigured")     # fail closed, never 200
     if creds is None:
         raise _unauthorized()
     try:
+        signing_key = _jwks_client.get_signing_key_from_jwt(creds.credentials)
         claims = jwt.decode(
             creds.credentials,
-            key=secret,
-            algorithms=["HS256"],                          # blocks alg=none / RS256 confusion
+            key=signing_key.key,
+            algorithms=["ES256"],                          # blocks alg=none / HS256-confusion
             issuer=issuer,                                 # check 3
             audience=audience,                             # check 4
             options={"require": ["exp", "iss", "aud", "sub"],
@@ -199,14 +210,14 @@ def verify_admin_jwt(
                      "verify_exp": True},                  # check 2
             leeway=0,
         )
-    except jwt.InvalidTokenError:                          # parent of every failure mode
+    except (jwt.InvalidTokenError, PyJWKClientError):      # parent of every failure mode
         raise _unauthorized()                              # one generic body — never leak which check failed
     return AdminIdentity(subject=claims["sub"], email=claims.get("email"))
 ```
 
 `_unauthorized()` → `HTTPException(401, "invalid_token", headers={"WWW-Authenticate": "Bearer"})`.
 
-**Issuer/audience values.** `supabase/config.toml` leaves `jwt_issuer` and `auth.external_url` commented out, so GoTrue falls back to the API external URL + `/auth/v1` ⇒ expected `http://127.0.0.1:54321/auth/v1`. Audience for a signed-in GoTrue user is `authenticated`. Both are read from env (`SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`, default `"authenticated"`) and **`sdd-apply` MUST confirm both by decoding a real token** from the running local stack before writing tests — do not hardcode from this document.
+**Issuer/audience/algorithm values — CONFIRMED against a real token, not assumed.** The orchestrator provisioned the one admin user via `POST /auth/v1/signup` and decoded the resulting access token before `sdd-apply` started: header `{"alg":"ES256","kid":"b81269f1-..."}`, payload `iss: "http://127.0.0.1:54321/auth/v1"`, `aud: "authenticated"`. `iss`/`aud` matched this document's original assumption exactly; `alg` did not (was assumed HS256, is actually ES256) — corrected throughout this document. `GET /auth/v1/.well-known/jwks.json` (reachable with just the anon `apikey` header, no further auth) returns the public key matching the token's `kid`. `SUPABASE_JWKS_URL` (not `JWT_SECRET`), `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` (default `"authenticated"`) are read from env.
 
 ### Router wiring
 
@@ -229,7 +240,7 @@ Router-level dependencies run **before** path-operation dependencies, so an unau
 
 | Layer | What | Approach |
 |---|---|---|
-| Unit (BE) | 4 checks × negative paths | `conftest.py` factory `make_admin_token(secret=SECRET, iss=ISS, aud="authenticated", exp_delta=3600, sub=..., alg="HS256")`. Cases: no header, non-Bearer scheme, `exp_delta=-1`, wrong `iss`, wrong `aud`, signed with a *different* secret (tampered), missing `exp`, `alg="none"`. **No live Auth service** — tokens are minted with the same shared secret. |
+| Unit (BE) | 4 checks × negative paths | **CORRECTED for ES256/JWKS** (was written against the wrong HS256 assumption): `conftest.py` generates its own throwaway ES256 keypair (`cryptography`'s `ec.generate_private_key(ec.SECP256R1())` — already a transitive dep via `pyjwt[crypto]`/`asyncpg`'s SSL support, confirm at apply time) and monkeypatches `PyJWKClient.get_signing_key_from_jwt` to return a `PyJWK`-wrapping the TEST public key, so `verify_admin_jwt` runs its real code path with zero network calls and zero live Auth dependency. `make_admin_token(private_key=TEST_KEY, iss=ISS, aud="authenticated", exp_delta=3600, sub=..., alg="ES256")`. Cases: no header, non-Bearer scheme, `exp_delta=-1`, wrong `iss`, wrong `aud`, signed with a *different* EC keypair (tampered — the real-world attack this guards against: a token signed with any key other than the one the JWKS `kid` names), missing `exp`, `alg="HS256"` using the TEST public key bytes as an HMAC secret (the classic asymmetric→symmetric algorithm-confusion attack — this is exactly why `algorithms=["ES256"]` must be an explicit allowlist, never inferred from the token's own header). **No live Auth service needed for any of these** — the monkeypatch replaces the JWKS fetch, not the verification logic. |
 | Unit (BE) | happy path | Valid token → `AdminIdentity`; assert body is identical generic `invalid_token` across all failures (no oracle). |
 | Integration (BE) | Router wiring | `TestClient`: bad token + `db_pool=None` → `401` (proves auth precedes pool); valid token + `db_pool=None` → `503`; valid token + real pool → `200` with `list_all()` rows. Repository call asserted absent via monkeypatched spy. |
 | Regression (BE) | No collateral damage | `test_health.py` / `test_lifespan.py` run **unmodified** and stay green. |
@@ -248,13 +259,13 @@ Router-level dependencies run **before** path-operation dependencies, so an unau
 | Push state | N/A | — |
 | PR commands | N/A — no shell/subprocess/PR automation | — |
 
-The matrix's shell/VCS rows do not apply. The real adversarial boundary is **HTTP path matching**, carried as RED tests above: (a) `/adminx` and `/admin-foo` must NOT be treated as admin by `isSafeAdminPath`; (b) a `next=` value pointing off-origin must be rejected; (c) `alg="none"` and RS256-substitution tokens must be rejected by the `algorithms=["HS256"]` allowlist; (d) `/api/admin/*` must return `401` JSON, never an HTML redirect.
+The matrix's shell/VCS rows do not apply. The real adversarial boundary is **HTTP path matching and token verification**, carried as RED tests above: (a) `/adminx` and `/admin-foo` must NOT be treated as admin by `isSafeAdminPath`; (b) a `next=` value pointing off-origin must be rejected; (c) `alg="none"` and HS256-algorithm-confusion tokens (signed using the public EC key bytes as an HMAC secret) must be rejected by the `algorithms=["ES256"]` allowlist; (d) `/api/admin/*` must return `401` JSON, never an HTML redirect.
 
 ## Migration / Rollout
 
 No data migration. Additive except three in-place edits (`main.py`, `pyproject.toml`, appending one export to `server.ts`). Rollback = revert; the manually created Auth user stays and is inert.
 
-**Prerequisite — admin user provisioning (blocking, manual, not automatable by this change).** No Supabase CLI subcommand creates users. Because `auth.enable_signup = true` and `auth.email.enable_confirmations = false` in `config.toml`, one call yields an immediately-confirmed user:
+**Prerequisite — admin user provisioning (blocking, manual, not automatable by this change) — DONE, by the orchestrator, before `sdd-apply` started.** No Supabase CLI subcommand creates users. Because `auth.enable_signup = true` and `auth.email.enable_confirmations = false` in `config.toml`, one call yields an immediately-confirmed user:
 
 ```bash
 curl -X POST "http://127.0.0.1:54321/auth/v1/signup" \
@@ -262,9 +273,9 @@ curl -X POST "http://127.0.0.1:54321/auth/v1/signup" \
   -d '{"email":"admin@gcell.local","password":"<>=6 chars>"}'
 ```
 
-Studio equivalent: `http://127.0.0.1:54323` → Authentication → Users → Add user → **Auto Confirm User**. `sdd-apply` MUST complete and verify this before the E2E check; unit and integration tests do not need it.
+Executed against the local stack: user `admin@gcell.local` now exists and is confirmed. `sdd-apply` does not need to repeat this step, only verify the user is still present if the local Supabase instance was reset since.
 
-## Open Questions
+## Open Questions — RESOLVED
 
-- [ ] Spec text in `admin-authentication` says `frontend/src/middleware.ts`; Next 16 requires `proxy.ts`. `sdd-tasks` must propagate the rename into the spec delta.
-- [ ] `sdd-apply` MUST decode a real local token and confirm `alg == "HS256"` plus the exact `iss`/`aud` values. If the local stack has moved to asymmetric signing keys, the HS256 shared-secret design is invalid and must be escalated, not patched.
+- [x] Spec text in `admin-authentication` said `frontend/src/middleware.ts`; Next 16 requires `proxy.ts`. **Fixed directly by the orchestrator** in `specs/admin-authentication/spec.md` (now says `proxy.ts`/`proxy()`/`/admin/login`) and re-synced to the Engram mirror, which `sdd-tasks` had independently flagged as stale.
+- [x] `sdd-apply` MUST decode a real local token and confirm `alg`/`iss`/`aud`. **Done by the orchestrator, not deferred to `sdd-apply`**: `alg` was WRONG (assumed HS256, is actually **ES256** — the local stack uses per-project asymmetric signing keys, the modern Supabase default). `iss`/`aud` were both correct as assumed. This is the "escalate, not patch" scenario this document called out — handled by correcting the JWT-verification design (PyJWKClient/ES256 throughout this document) BEFORE any apply work started, not by silently proceeding with a verification scheme that would reject every real token.
