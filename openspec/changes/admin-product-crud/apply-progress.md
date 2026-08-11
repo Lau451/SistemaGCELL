@@ -1,5 +1,33 @@
 # Apply Progress: Admin Product CRUD
 
+## Batch 5 (Post-sdd-verify — Spec Correction, Coverage Gaps, Phase 5 Closure)
+
+**Scope**: `sdd-verify` ran against the full 4-PR change (main @ `0dcdfd0`) and returned **FAIL** (1 CRITICAL, 0 WARNING, 3 SUGGESTION). The orchestrator resolved every finding directly, on `main`, without a separate PR branch — this work is documentation/test-only, no new production behavior, well under budget.
+
+**CRITICAL finding, resolved**: `specs/product-persistence/spec.md`'s "Repository Soft-Delete Retires A Product Or Variant Without Row Deletion" requirement literally claimed soft-deleting a product marks "the product row **and both variant rows**... via `UPDATE`." The actual, deliberately-different implementation (`design.md`'s own "product retirement cascades at read time, not by stamping variants" decision, followed correctly by both adapters) stamps only the product row and hides variants via read-time join filtering. Unlike the Server-Actions-only divergence (explicitly reconciled in `design.md`'s Open Questions during PR4), this one was never reconciled back into `spec.md` — a pure spec-text/implementation mismatch, not a functional defect (the described end-user behavior — variants disappearing from every view after a product retires — was real and already well-tested). Fixed by rewriting the requirement and its scenario to describe the actual read-time-cascade mechanism, matching `design.md` and the already-correct `admin-product-management` spec (which only ever described the observable effect, not the mechanism).
+
+**SUGGESTION #1, resolved**: two spec scenarios ("No Restore Capability", "No Show-Retired Filter") were PARTIAL — true only by static source-reading, with no runtime test that would catch either control being added by accident later. Added one new test to `page.test.tsx` ("never renders a restore control or a show-retired filter/toggle") asserting the negative via `screen.queryByText`/`queryByRole`, closing both scenarios to COMPLIANT with a real regression guard.
+
+**SUGGESTION #2, resolved**: Phase 5 (tasks 5.1–5.5) was 0/5 checked in `tasks.md` despite 5.2–5.4 already being independently proven during verification.
+- 5.1 (manual E2E, no Playwright in this repo): ran directly against the live stack — started FastAPI on port 8123 with the real `DB_URL`/`SUPABASE_JWKS_URL`/etc, signed in as the pre-existing `e2e-admin@gcell.local` test user via a real password grant against local Supabase Auth, then drove the full chain with real HTTP requests and a real JWT: `POST /admin/products` (201, slug auto-generated as `e2e-funda-de-prueba-grande`) → confirmed the row in the public `catalog_products` REST endpoint → `PATCH` (renamed name/model, changed the variant) → confirmed the slug stayed frozen in both the API response and the public catalog row → `DELETE` (204) → confirmed `GET /admin/products/{id}` now `404`, the product absent from `GET /admin/products`, and absent from `catalog_products`. Full create→edit→retire→gone chain proven on the real stack, not mocked. Backend process killed afterward (verified via a failed health check).
+- 5.2/5.3: closed by SUGGESTION #1's new test above, plus `sdd-verify`'s own independent static confirmation.
+- 5.4: full regression re-run — 163/163 backend (`DB_URL` set), 212/212 frontend (211 + the new negative-assertion test), `npx tsc --noEmit` clean, `npm run build` clean with all routes registered.
+- 5.5 (README note "if project convention requires it"): checked `backend/README.md` (empty) and `frontend/README.md` (unmodified `create-next-app` boilerplate) — this project has no README-as-documentation convention; every prior archived change also left both untouched. N/A, correctly.
+
+**SUGGESTION #3 (spec cross-reference comment)**: not applied — the corrected `product-persistence/spec.md` requirement text now directly explains the read-time-cascade mechanism and cites `design.md` by name inline, which serves the same purpose as a separate cross-reference comment without adding one.
+
+**Files changed this batch**:
+| File | Action |
+|---|---|
+| `openspec/changes/admin-product-crud/specs/product-persistence/spec.md` | Modified — CRITICAL fix |
+| `frontend/src/app/(admin)/admin/products/page.test.tsx` | Modified — 1 new test |
+| `openspec/changes/admin-product-crud/tasks.md` | Modified — Phase 5 all 5 tasks marked `[x]` |
+| `openspec/changes/admin-product-crud/verify-report.md` | Pre-existing, not modified (kept as the historical FAIL record; this batch's fixes are what let a re-verify pass) |
+
+**Verification**: 163/163 backend, 212/212 frontend, `tsc --noEmit` clean, `npm run build` clean, full manual E2E chain proven on the live stack.
+
+**Status**: All 59 tasks across Phases 0–5 complete. Ready for a fresh `sdd-verify` pass (should now return PASS), then `sdd-archive`.
+
 ## Batch 4 (PR4 — Frontend)
 
 **Scope**: Phase 4 (4.1–4.16), the pre-resolved "PR 4" work unit (`chain

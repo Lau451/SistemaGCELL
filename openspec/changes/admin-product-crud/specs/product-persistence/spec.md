@@ -96,19 +96,29 @@ additions/removals in the same call. `update` MUST NOT accept or alter
 ### Requirement: Repository Soft-Delete Retires A Product Or Variant Without Row Deletion
 
 The repository port MUST expose a `soft_delete` operation covering both a
-product and an individual variant. `soft_delete` MUST mark the target via an
-`UPDATE` (never a `DELETE`), MUST leave `stock_movements` completely
-untouched, and, when applied to a product, MUST also mark all of that
-product's variants as retired within the same call. `soft_delete` MUST NOT
-require a product to retain at least one active variant.
+product and an individual variant. `soft_delete` MUST mark ONLY its own
+target row via a single `UPDATE` (never a `DELETE`) and MUST leave
+`stock_movements` completely untouched. `soft_delete` MUST NOT require a
+product to retain at least one active variant.
 
-#### Scenario: Soft-deleting a product cascades to its variants
+Cascade to variants when a product is retired is achieved at READ time, not
+by a second write: every read (`get_by_id`, `get_by_slug`, `list_all`, and
+the public catalog views) MUST exclude a variant whose parent product is
+retired, even though the variant row's own `deleted_at` stays unset. This is
+a deliberate design choice (see design.md "product retirement cascades at
+read time, not by stamping variants") — it keeps a future restore able to
+distinguish "hidden because its parent retired" from "retired individually,"
+and keeps retirement a single-row, transaction-free operation.
+
+#### Scenario: Soft-deleting a product hides its variants without writing to them
 
 - GIVEN a product with two active variants and recorded stock movements on
   one variant
 - WHEN `soft_delete` is called for the product
-- THEN the product row and both variant rows MUST be marked retired via
-  `UPDATE`
+- THEN ONLY the product row MUST be marked retired via `UPDATE`
+- AND neither variant row's `deleted_at` MUST change
+- AND every subsequent read MUST exclude both variants because their parent
+  product is retired
 - AND every `stock_movements` row referencing those variants MUST remain
   unchanged
 

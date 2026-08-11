@@ -174,6 +174,38 @@ describe("AdminProductsPage", () => {
     expect(formData.get("product-id")).toBe("p1");
   });
 
+  it("never renders a restore control or a show-retired filter/toggle", async () => {
+    // Runtime regression guard for the spec's "No Restore Capability In
+    // This Change" and "No Show-Retired Filter" requirements — these were
+    // previously true only by omission (nothing built), which sdd-verify
+    // flagged as PARTIAL since no test would catch either control being
+    // added by accident later.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          {
+            id: "p1",
+            slug: "funda-iphone-15",
+            name: "Funda iPhone 15",
+            model: "iPhone 15",
+            variants: [],
+          },
+        ]),
+    } as Response);
+
+    const AdminProductsPage = await importPage();
+    const jsx = await AdminProductsPage();
+    render(jsx);
+
+    expect(screen.queryByText(/restore/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/retired/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/show.*deleted/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: /filter/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders an error state when the proxy route fails, without throwing", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,
