@@ -12,7 +12,7 @@ dag:
   proposal: complete
   specs: complete
   design: complete
-  tasks: pending
+  tasks: complete
   apply: pending
   verify: pending
   archive: pending
@@ -22,6 +22,22 @@ phases_completed:
   - propose
   - spec
   - design
+  - tasks
+
+review_workload_decision:
+  budget_risk: high
+  estimated_changed_lines: "~700-850 (own file-by-file estimate, confirms design's own flag)"
+  chained_prs: true
+  suggested_split: "PR1 backend JWT + require_db_pool -> PR2 frontend session/proxy infra -> PR3 login pages + API proxy route + E2E"
+  chain_strategy: stacked-to-main
+  delivery_strategy: ask-on-risk
+  decision_needed_before_apply: true
+
+engram_sync_fix: >
+  sdd-tasks flagged that Engram topic sdd/admin-panel-auth/spec was still stale
+  (middleware.ts/login) after the orchestrator's on-disk fix following sdd-design.
+  Re-upserted via mem_save (observation stays id 319) to match the corrected
+  on-disk specs/admin-authentication/spec.md before proceeding to apply.
 
 design_findings_verified_by_orchestrator:
   - >
@@ -54,7 +70,7 @@ known_risks:
   - "review budget: Minimal scope + negative auth tests (missing/expired/wrong-iss/wrong-aud/tampered signature) is plausible but not comfortably clear of 400 lines -- sdd-tasks must forecast honestly"
   - "platform-foundation's pool-lifecycle requirement needs a genuine MODIFIED delta (fail-fast/503 clause for /admin), not just an implementation fix"
 
-next_recommended: sdd-tasks
+next_recommended: sdd-apply (3 chained PRs, stacked-to-main -- orchestrator to confirm split with user before launching)
 
 notes: |
   Builds on archived products-postgres-adapter (ProductRepository/stock domain
