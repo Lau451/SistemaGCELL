@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from gcell.api.admin import router as admin_router
 from gcell.api.health import router as health_router
 from gcell.shared.infrastructure.config import db_url
 from gcell.shared.infrastructure.postgres import close_pool, create_pool
@@ -21,10 +22,11 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     dsn = db_url()
     if dsn is None:
-        # Safe only because zero routes consume `app.state.db_pool` in this
-        # change (no HTTP routes ship here) -- see design.md "pool lifecycle
-        # and availability". The future admin+auth change MUST convert this
-        # to fail-fast or a 503 dependency guard once a route needs the pool.
+        # `/health` never needs the pool, and `/admin/*` is guarded by
+        # `require_db_pool` (503 when `None`) -- see design.md "Decision:
+        # per-request 503 dependency guard, not startup abort". Only those
+        # two route groups exist, so a missing `DB_URL` here is safe to log
+        # and continue rather than fail startup.
         logger.warning("DB_URL is not set -- app.state.db_pool will be None")
         app.state.db_pool = None
     else:
@@ -39,3 +41,4 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="GCELL API", lifespan=lifespan)
 app.include_router(health_router)
+app.include_router(admin_router)

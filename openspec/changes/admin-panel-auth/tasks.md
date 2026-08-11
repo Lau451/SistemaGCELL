@@ -31,18 +31,18 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: Backend — JWT Verification & DB Guard (PR 1)
 
-- [ ] 1.1 RED `backend/tests/unit/shared/test_auth.py`: `conftest.py` generates a throwaway ES256 test keypair and monkeypatches `PyJWKClient.get_signing_key_from_jwt` to return the TEST public key (no live Auth service, no network call — see design.md's corrected Testing Strategy). `make_admin_token` factory; cases missing token, non-Bearer, expired, wrong `iss`, wrong `aud`, tampered signature (signed with a *different* EC keypair), missing `exp`, `alg="HS256"` using the test public key bytes as an HMAC secret (algorithm-confusion attack) — all 401, identical body.
-- [ ] 1.2 GREEN `backend/src/gcell/shared/infrastructure/config.py`: add `jwks_url()`, `jwt_issuer()`, `jwt_audience()` (NOT `jwt_secret()`).
-- [ ] 1.3 GREEN `backend/src/gcell/shared/infrastructure/auth.py`: `AdminIdentity`, `verify_admin_jwt` (PyJWT + `PyJWKClient`, `algorithms=["ES256"]`, require `exp/iss/aud/sub`).
-- [ ] 1.4 Add `pyjwt>=2.10` to `backend/pyproject.toml`; update `uv.lock`. Confirm the EC-keypair-generation dependency (`cryptography`, likely already transitive) is available for the test fixture.
-- [ ] 1.5 RED `backend/tests/unit/shared/test_dependencies.py`: `require_db_pool` — `None` pool → 503.
-- [ ] 1.6 GREEN `backend/src/gcell/shared/infrastructure/dependencies.py`: `require_db_pool`.
-- [ ] 1.7 RED `backend/tests/integration/api/test_admin.py`: bad token+`pool=None`→401 (order proof); valid token+`pool=None`→503; valid token+pool→200 via `list_all` spy.
-- [ ] 1.8 GREEN `backend/src/gcell/api/admin.py`: router, `GET /admin/products`, response model.
-- [ ] 1.9 Wire `backend/src/gcell/main.py`: `include_router(admin_router)`; refresh lifespan comment.
-- [ ] 1.10 Add `SUPABASE_JWKS_URL` (NOT `JWT_SECRET`), `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` to `backend/.env.example`.
-- [ ] 1.11 Regression: run `test_lifespan.py`/`test_health.py` unmodified, confirm green.
-- [ ] 1.12 Add literal `asyncpg` entry to `BANNED_MODULES` domain-boundary fixture.
+- [x] 1.1 RED `backend/tests/unit/shared/test_auth.py`: `conftest.py` generates a throwaway ES256 test keypair and monkeypatches `PyJWKClient.get_signing_key_from_jwt` to return the TEST public key (no live Auth service, no network call — see design.md's corrected Testing Strategy). `make_admin_token` factory; cases missing token, non-Bearer, expired, wrong `iss`, wrong `aud`, tampered signature (signed with a *different* EC keypair), missing `exp`, `alg="HS256"` using the test public key bytes as an HMAC secret (algorithm-confusion attack) — all 401, identical body. DONE — 13 tests (8 negative cases + happy path + identical-body proof + 2 extra fail-closed-500-misconfig cases + issuer/audience-from-config triangulation).
+- [x] 1.2 GREEN `backend/src/gcell/shared/infrastructure/config.py`: add `jwks_url()`, `jwt_issuer()`, `jwt_audience()` (NOT `jwt_secret()`). DONE.
+- [x] 1.3 GREEN `backend/src/gcell/shared/infrastructure/auth.py`: `AdminIdentity`, `verify_admin_jwt` (PyJWT + `PyJWKClient`, `algorithms=["ES256"]`, require `exp/iss/aud/sub`). DONE — lazily-constructed (`lru_cache`) module-wide `PyJWKClient`, not built at import time (see apply-progress deviation note).
+- [x] 1.4 Add `pyjwt>=2.10` to `backend/pyproject.toml`; update `uv.lock`. Confirm the EC-keypair-generation dependency (`cryptography`, likely already transitive) is available for the test fixture. DONE — added as `pyjwt[crypto]>=2.10` via `uv add`; `cryptography` was NOT already transitive (confirmed via `uv pip list` before/after), pulled in explicitly by the `[crypto]` extra.
+- [x] 1.5 RED `backend/tests/unit/shared/test_dependencies.py`: `require_db_pool` — `None` pool → 503. DONE.
+- [x] 1.6 GREEN `backend/src/gcell/shared/infrastructure/dependencies.py`: `require_db_pool`. DONE.
+- [x] 1.7 RED `backend/tests/integration/api/test_admin.py`: bad token+`pool=None`→401 (order proof); valid token+`pool=None`→503; valid token+pool→200 via `list_all` spy. DONE.
+- [x] 1.8 GREEN `backend/src/gcell/api/admin.py`: router, `GET /admin/products`, response model. DONE.
+- [x] 1.9 Wire `backend/src/gcell/main.py`: `include_router(admin_router)`; refresh lifespan comment. DONE.
+- [x] 1.10 Add `SUPABASE_JWKS_URL` (NOT `JWT_SECRET`), `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` to `backend/.env.example`. DONE.
+- [x] 1.11 Regression: run `test_lifespan.py`/`test_health.py` unmodified, confirm green. DONE — 0-byte diff on both files, both pass (`test_lifespan.py`'s real-DB test also confirms the local Postgres is reachable).
+- [x] 1.12 Add literal `asyncpg` entry to `BANNED_MODULES` domain-boundary fixture. DONE — already present (added by `products-postgres-adapter`); confirmed no further change needed, per the task's own escape hatch.
 
 ## Phase 2: Frontend — Session & Proxy Infrastructure (PR 2)
 
