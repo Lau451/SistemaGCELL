@@ -34,9 +34,9 @@ Chain strategy: stacked-to-main
 - [x] 1.3 Add `ImageNotFoundError`, `UnsupportedImageError`, `ImageTooLargeError` to `products/application/exceptions.py`
 
 ## Phase 2: Persistence (PR2, ~480)
-- [ ] 2.1 RED: db integration — hero insert (NULL `variant_id`), composite FK violation, `list_for_product` hides soft-deleted-variant images, `reorder` writes 0..n-1 atomically (spec: product-persistence)
-- [ ] 2.2 GREEN: `products/application/image_repository.py` port + `postgres_product_image_repository.py`
-- [ ] 2.3 GREEN: `in_memory_product_image_repository.py`; add adapter-parity test (same ops → same observable state)
+- [x] 2.1 RED: db integration — hero insert (NULL `variant_id`), composite FK violation, `list_for_product` hides soft-deleted-variant images, `reorder` writes 0..n-1 atomically (spec: product-persistence)
+- [x] 2.2 GREEN: `products/application/image_repository.py` port + `postgres_product_image_repository.py`
+- [x] 2.3 GREEN: `in_memory_product_image_repository.py`; add adapter-parity test (same ops → same observable state)
 
 ## Phase 3: Storage/Normalizer (PR3, ~520)
 - [ ] 3.1 RED: normalizer guardrail suite — decode bomb, spoofed mime, animated webp, CMYK, EXIF strip, oversized (pre-decode), non-image bytes, truncated, 4000px→≤1600px webp output (spec: product-media-storage "Normalized")

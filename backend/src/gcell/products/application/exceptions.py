@@ -70,10 +70,18 @@ class ImageNotFoundError(Exception):
     (IDOR guard, never a 403 that confirms existence across a wrong
     parent — see admin-product-images spec "Image Ownership Is Checked At
     The Use-Case Layer"), or already deleted.
+
+    `product_id` is optional: `ProductImageRepository.delete(image_id)`
+    (see product-persistence spec) takes no `product_id`, so a
+    zero-rows-affected delete has no product to report — the use-case
+    layer (Phase 4), which always resolves ownership first, supplies it.
     """
 
-    def __init__(self, image_id: UUID, product_id: UUID) -> None:
-        super().__init__(f"No image '{image_id}' for product '{product_id}'")
+    def __init__(self, image_id: UUID, product_id: UUID | None = None) -> None:
+        if product_id is None:
+            super().__init__(f"No image '{image_id}'")
+        else:
+            super().__init__(f"No image '{image_id}' for product '{product_id}'")
         self.image_id = image_id
         self.product_id = product_id
 

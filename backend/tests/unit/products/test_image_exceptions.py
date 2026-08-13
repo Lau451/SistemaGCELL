@@ -27,6 +27,20 @@ def test_image_not_found_error_carries_image_and_product_ids() -> None:
     assert str(product_id) in str(error)
 
 
+def test_image_not_found_error_allows_omitted_product_id() -> None:
+    """`PostgresProductImageRepository.delete(image_id)` (PR2) has no
+    `product_id` in its signature -- a zero-rows-affected `DELETE` cannot
+    know which product an unknown/already-deleted image belonged to.
+    """
+    image_id = uuid4()
+
+    error = ImageNotFoundError(image_id)
+
+    assert error.image_id == image_id
+    assert error.product_id is None
+    assert str(image_id) in str(error)
+
+
 def test_unsupported_image_error_carries_reason() -> None:
     error = UnsupportedImageError("unsupported_animated_image")
 
