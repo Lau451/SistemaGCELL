@@ -29,9 +29,9 @@ Chain strategy: stacked-to-main
 | 7 | Image manager UI | PR7 | Manual: upload/reorder/delete via `/admin/products/[id]` | Dev server + local Supabase, real upload | Revert UI files, feature entry point removed |
 
 ## Phase 1: Domain (PR1, ~380)
-- [ ] 1.1 RED: `product_image.py` tests — storage_path shape/uniqueness/hero prefix, unslugifiable colour→`variant`, blank path & negative sort_order rejected (spec: admin-product-images "Hero Assignment"; product-media-storage "Storage Path")
-- [ ] 1.2 GREEN: create `products/domain/product_image.py` (`ProductImage`, `MAX_UPLOAD_BYTES`, `ALLOWED_UPLOAD_MIMES`) + `products/application/image_path.py` (`build_storage_path`)
-- [ ] 1.3 Add `ImageNotFoundError`, `UnsupportedImageError`, `ImageTooLargeError` to `products/application/exceptions.py`
+- [x] 1.1 RED: `product_image.py` tests — storage_path shape/uniqueness/hero prefix, unslugifiable colour→`variant`, blank path & negative sort_order rejected (spec: admin-product-images "Hero Assignment"; product-media-storage "Storage Path")
+- [x] 1.2 GREEN: create `products/domain/product_image.py` (`ProductImage`, `MAX_UPLOAD_BYTES`, `ALLOWED_UPLOAD_MIMES`) + `products/application/image_path.py` (`build_storage_path`)
+- [x] 1.3 Add `ImageNotFoundError`, `UnsupportedImageError`, `ImageTooLargeError` to `products/application/exceptions.py`
 
 ## Phase 2: Persistence (PR2, ~480)
 - [ ] 2.1 RED: db integration — hero insert (NULL `variant_id`), composite FK violation, `list_for_product` hides soft-deleted-variant images, `reorder` writes 0..n-1 atomically (spec: product-persistence)

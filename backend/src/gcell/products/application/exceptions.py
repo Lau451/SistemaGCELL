@@ -62,3 +62,43 @@ class UnslugifiableProductNameError(Exception):
             f"Cannot derive a slug from name '{name}': no alphanumeric content"
         )
         self.name = name
+
+
+class ImageNotFoundError(Exception):
+    """Raised when an operation targets an image id that does not belong
+    to the given product — unknown id, belongs to a different product
+    (IDOR guard, never a 403 that confirms existence across a wrong
+    parent — see admin-product-images spec "Image Ownership Is Checked At
+    The Use-Case Layer"), or already deleted.
+    """
+
+    def __init__(self, image_id: UUID, product_id: UUID) -> None:
+        super().__init__(f"No image '{image_id}' for product '{product_id}'")
+        self.image_id = image_id
+        self.product_id = product_id
+
+
+class UnsupportedImageError(Exception):
+    """Raised when an uploaded file fails mime-type/format/decode
+    validation before any Storage write is attempted (see
+    product-media-storage spec "Upload Validation Runs Before Any Storage
+    Write" and the Pillow guardrail table in design.md).
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Unsupported image: {reason}")
+        self.reason = reason
+
+
+class ImageTooLargeError(Exception):
+    """Raised when an uploaded file exceeds `MAX_UPLOAD_BYTES` before any
+    Storage write is attempted (see admin-product-images spec "Upload
+    Validation Runs Before Any Storage Write").
+    """
+
+    def __init__(self, size_bytes: int, max_bytes: int) -> None:
+        super().__init__(
+            f"Image size {size_bytes} bytes exceeds the {max_bytes}-byte limit"
+        )
+        self.size_bytes = size_bytes
+        self.max_bytes = max_bytes
