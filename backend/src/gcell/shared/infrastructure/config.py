@@ -35,3 +35,24 @@ def jwt_audience() -> str:
     logged-in users, confirmed against a real local token.
     """
     return os.environ.get("SUPABASE_JWT_AUDIENCE", "authenticated")
+
+
+def supabase_url() -> str | None:
+    """Return the Supabase project URL, or `None` if unset.
+
+    BACKEND-ONLY (see design.md "Config") — this MUST NEVER acquire a
+    `NEXT_PUBLIC_` twin; the `SUPABASE_SERVICE_ROLE_KEY` it is paired
+    with bypasses RLS and must never reach the frontend bundle.
+    """
+    return os.environ.get("SUPABASE_URL")
+
+
+def supabase_service_role_key() -> str | None:
+    """Return the Supabase service_role key, or `None` if unset.
+
+    BACKEND-ONLY — see `supabase_url()`. This is the credential the
+    `shared/infrastructure/supabase_storage.py` adapter uses to write
+    product image objects (design.md "Backend Service Role Upload And
+    Delete Contract").
+    """
+    return os.environ.get("SUPABASE_SERVICE_ROLE_KEY")

@@ -39,10 +39,10 @@ Chain strategy: stacked-to-main
 - [x] 2.3 GREEN: `in_memory_product_image_repository.py`; add adapter-parity test (same ops → same observable state)
 
 ## Phase 3: Storage/Normalizer (PR3, ~520)
-- [ ] 3.1 RED: normalizer guardrail suite — decode bomb, spoofed mime, animated webp, CMYK, EXIF strip, oversized (pre-decode), non-image bytes, truncated, 4000px→≤1600px webp output (spec: product-media-storage "Normalized")
-- [ ] 3.2 GREEN: `shared/application/{object_storage,image_normalizer}.py` ports; `shared/infrastructure/pillow_image_normalizer.py`; ban `PIL` in `tests/architecture/test_domain_boundary.py`
-- [ ] 3.3 RED: `require_storage` returns 503 when Supabase config unset (spec: product-media-storage "Missing service-role")
-- [ ] 3.4 GREEN: `shared/infrastructure/supabase_storage.py` (httpx adapter); `config.py` (`supabase_url`, `supabase_service_role_key`); `dependencies.py` `require_storage`; add pillow/python-multipart/httpx to `pyproject.toml` runtime deps + `.env.example`
+- [x] 3.1 RED: normalizer guardrail suite — decode bomb, spoofed mime, animated webp, CMYK, EXIF strip, oversized (pre-decode), non-image bytes, truncated, 4000px→≤1600px webp output (spec: product-media-storage "Normalized")
+- [x] 3.2 GREEN: `shared/application/{object_storage,image_normalizer}.py` ports; `shared/infrastructure/pillow_image_normalizer.py`; ban `PIL` in `tests/architecture/test_domain_boundary.py`
+- [x] 3.3 RED: `require_storage` returns 503 when Supabase config unset (spec: product-media-storage "Missing service-role")
+- [x] 3.4 GREEN: `shared/infrastructure/supabase_storage.py` (httpx adapter); `config.py` (`supabase_url`, `supabase_service_role_key`); `dependencies.py` `require_storage`; add pillow/python-multipart/httpx to `pyproject.toml` runtime deps + `.env.example`
 
 ## Phase 4: Use Cases (PR4, ~420)
 - [ ] 4.1 RED: upload — DB insert failure triggers exactly one compensating `delete(path)` + re-raise; foreign `variant_id` → not-found before any storage call, spy asserts zero calls (spec: admin-product-images "Compensation", "Ownership")

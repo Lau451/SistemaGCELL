@@ -2,9 +2,10 @@
 
 Walks the AST of every `.py` file under each of the 6 domains' `domain/`
 layer and asserts that none of them import a banned framework/infrastructure
-package (FastAPI, Pydantic, Supabase, SQLAlchemy, httpx). `domain/` must stay
-pure Python (stdlib + same-domain `domain` code only) so business rules never
-depend on a web framework, an ORM, or a network client.
+package (FastAPI, Pydantic, Supabase, SQLAlchemy, httpx, asyncpg, Pillow).
+`domain/` must stay pure Python (stdlib + same-domain `domain` code only) so
+business rules never depend on a web framework, an ORM, a network client, or
+an image-processing library.
 
 Uses Python's `ast` module to inspect real `Import`/`ImportFrom` statements —
 not string/regex matching — so a banned name inside a docstring, comment, or
@@ -15,7 +16,7 @@ import ast
 from pathlib import Path
 
 DOMAINS = ["products", "stock", "content", "ai", "recommendation", "shared"]
-BANNED_MODULES = {"fastapi", "pydantic", "supabase", "sqlalchemy", "httpx", "asyncpg"}
+BANNED_MODULES = {"fastapi", "pydantic", "supabase", "sqlalchemy", "httpx", "asyncpg", "PIL"}
 
 BACKEND_SRC = Path(__file__).resolve().parents[2] / "src" / "gcell"
 
