@@ -54,8 +54,8 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: Admin Routes (PR5, ~380)
 - [x] 5.1 Reconcile `specs/admin-api-access/spec.md` endpoint list with `design.md` Decisions 6/7 (single `PUT .../images/order`, no separate replace endpoint) — DONE, orchestrator rewrote the spec requirement directly (GET/POST/DELETE/PUT only, no replace route)
-- [ ] 5.2 RED: api integration — 4 routes 401 with repo+storage spy (zero calls); 503 when storage unset; 422 for text-as-file; 404 cross-product `image_id` (spec: admin-api-access; admin-product-images "Authorization")
-- [ ] 5.3 GREEN: add `GET/POST/DELETE/PUT` image routes to `api/admin.py` calling the 4 use cases; extend `_execute_or_raise` with 502 `ObjectStorageError`
+- [x] 5.2 RED: api integration — 4 routes 401 with repo+storage spy (zero calls); 503 when storage unset; 422 for text-as-file; 404 cross-product `image_id` (spec: admin-api-access; admin-product-images "Authorization")
+- [x] 5.3 GREEN: add `GET/POST/DELETE/PUT` image routes to `api/admin.py` calling the 4 use cases; extend `_execute_or_raise` with 502 `ObjectStorageError`
 
 ## Phase 6: Relay + Server Actions (PR6, ~330)
 - [ ] 6.1 RED: `adminBackendFetch` with `FormData` sets no `Content-Type`, skips `JSON.stringify`; existing JSON callers' request shape unchanged (spec: admin-product-images)

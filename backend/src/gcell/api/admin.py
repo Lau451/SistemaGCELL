@@ -29,28 +29,45 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict
 
 from gcell.products.application.create_product import CreateProductUseCase
+from gcell.products.application.delete_product_image import DeleteProductImageUseCase
 from gcell.products.application.exceptions import (
     DuplicateProductSlugError,
+    ImageNotFoundError,
+    ImageTooLargeError,
     ProductNotFoundError,
     UnslugifiableProductNameError,
+    UnsupportedImageError,
     VariantNotFoundError,
 )
+from gcell.products.application.reorder_product_image import ReorderProductImageUseCase
 from gcell.products.application.retire_product import (
     RetireProductUseCase,
     RetireVariantUseCase,
 )
 from gcell.products.application.slug import SlugGenerationExhaustedError
 from gcell.products.application.update_product import UpdateProductUseCase
+from gcell.products.application.upload_product_image import UploadProductImageUseCase
 from gcell.products.domain.product import Product, ProductVariant
+from gcell.products.domain.product_image import ProductImage
+from gcell.products.infrastructure.postgres_product_image_repository import (
+    PostgresProductImageRepository,
+)
 from gcell.products.infrastructure.postgres_product_repository import (
     PostgresProductRepository,
 )
+from gcell.shared.application.object_storage import ObjectStorageError
 from gcell.shared.infrastructure.auth import verify_admin_jwt
-from gcell.shared.infrastructure.dependencies import require_db_pool
+from gcell.shared.infrastructure.dependencies import (
+    StorageCredentials,
+    require_db_pool,
+    require_storage,
+)
+from gcell.shared.infrastructure.pillow_image_normalizer import PillowImageNormalizer
+from gcell.shared.infrastructure.supabase_storage import SupabaseStorage
 
 router = APIRouter(
     prefix="/admin",
@@ -69,19 +86,30 @@ async def _execute_or_raise[T](operation: Awaitable[T]) -> T:
         TypeError,
         UnslugifiableProductNameError,
         SlugGenerationExhaustedError,
+        UnsupportedImageError,
+        ImageTooLargeError,
     ) as exc:
         # A name with no alphanumeric content, or one that collides on
         # every generated slug candidate, is a rejected-body case just
         # like a domain ValueError -- design.md's table didn't enumerate
         # these two (both plain `Exception` subclasses, not ValueError),
-        # which would otherwise escape as an unhandled 500.
+        # which would otherwise escape as an unhandled 500. An unsupported
+        # or oversized image upload is the same class of rejected-body
+        # case (admin-product-images spec "Upload Validation Runs Before
+        # Any Storage Write").
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except (ProductNotFoundError, VariantNotFoundError):
-        # Same generic body for both -- a variant belonging to a different
-        # product must never be distinguishable from an unknown id (IDOR).
+    except (ProductNotFoundError, VariantNotFoundError, ImageNotFoundError):
+        # Same generic body for all three -- a variant/image belonging to
+        # a different product must never be distinguishable from an
+        # unknown id (IDOR). `ImageNotFoundError` also covers a foreign id
+        # inside a reorder request's ordered list.
         raise HTTPException(status_code=404, detail="not_found") from None
     except DuplicateProductSlugError:
         raise HTTPException(status_code=409, detail="slug_conflict") from None
+    except ObjectStorageError as exc:
+        # A genuine (non-404) Storage failure that escapes the use case --
+        # design.md's status-mapping table, "NEW 502 ObjectStorageError".
+        raise HTTPException(status_code=502, detail="storage_error") from exc
 
 
 class AdminProductVariantResponse(BaseModel):
@@ -238,3 +266,124 @@ async def retire_admin_variant(
             await use_case.execute(product_id, variant_id)
 
     await _execute_or_raise(_retire())
+
+
+# ---------------------------------------------------------------------------
+# Product images (design.md "Endpoints"). `require_storage` is a dependency
+# ONLY on upload and delete -- the only two use cases that construct an
+# `ObjectStorage` adapter. GET and the reorder PUT never touch Storage
+# (admin-product-images spec "Reorder Replaces The Product's Whole Image
+# Order In One Call" -- "no Storage object MUST be modified"), so a
+# missing Supabase Storage config must never block listing or reordering.
+# Where both apply, dependency order
+# stays 401 (router-level) -> `require_db_pool` 503 -> `require_storage`
+# 503, matching design.md's status-mapping section exactly.
+# ---------------------------------------------------------------------------
+
+
+class AdminProductImageResponse(BaseModel):
+    id: UUID
+    product_id: UUID
+    variant_id: UUID | None
+    storage_path: str
+    alt_text: str | None
+    sort_order: int
+
+    @classmethod
+    def from_domain(cls, image: ProductImage) -> "AdminProductImageResponse":
+        return cls(
+            id=image.id,
+            product_id=image.product_id,
+            variant_id=image.variant_id,
+            storage_path=image.storage_path,
+            alt_text=image.alt_text,
+            sort_order=image.sort_order,
+        )
+
+
+def _build_storage(credentials: StorageCredentials) -> SupabaseStorage:
+    return SupabaseStorage(
+        url=credentials.url,
+        service_role_key=credentials.service_role_key,
+    )
+
+
+@router.get("/products/{product_id}/images")
+async def list_admin_product_images(
+    product_id: UUID,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+) -> list[AdminProductImageResponse]:
+    async with pool.acquire() as conn:
+        images = await PostgresProductImageRepository(conn).list_for_product(product_id)
+    return [AdminProductImageResponse.from_domain(image) for image in images]
+
+
+@router.post("/products/{product_id}/images", status_code=201)
+async def upload_admin_product_image(
+    product_id: UUID,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+    storage_credentials: Annotated[StorageCredentials, Depends(require_storage)],
+    file: UploadFile,
+    variant_id: Annotated[UUID | None, Form()] = None,
+    alt_text: Annotated[str | None, Form()] = None,
+) -> AdminProductImageResponse:
+    data = await file.read()
+
+    async def _upload() -> ProductImage:
+        async with pool.acquire() as conn:
+            use_case = UploadProductImageUseCase(
+                image_repository=PostgresProductImageRepository(conn),
+                product_repository=PostgresProductRepository(conn),
+                object_storage=_build_storage(storage_credentials),
+                normalizer=PillowImageNormalizer(),
+            )
+            return await use_case.execute(
+                product_id=product_id,
+                data=data,
+                variant_id=variant_id,
+                alt_text=alt_text,
+            )
+
+    image = await _execute_or_raise(_upload())
+    return AdminProductImageResponse.from_domain(image)
+
+
+@router.delete("/products/{product_id}/images/{image_id}", status_code=204)
+async def delete_admin_product_image(
+    product_id: UUID,
+    image_id: UUID,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+    storage_credentials: Annotated[StorageCredentials, Depends(require_storage)],
+) -> None:
+    async def _delete() -> None:
+        async with pool.acquire() as conn:
+            use_case = DeleteProductImageUseCase(
+                image_repository=PostgresProductImageRepository(conn),
+                object_storage=_build_storage(storage_credentials),
+            )
+            await use_case.execute(product_id, image_id)
+
+    await _execute_or_raise(_delete())
+
+
+class AdminReorderImagesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image_ids: list[UUID]
+
+
+@router.put("/products/{product_id}/images/order")
+async def reorder_admin_product_images(
+    product_id: UUID,
+    body: AdminReorderImagesRequest,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+) -> list[AdminProductImageResponse]:
+    async def _reorder() -> list[ProductImage]:
+        async with pool.acquire() as conn:
+            use_case = ReorderProductImageUseCase(
+                image_repository=PostgresProductImageRepository(conn)
+            )
+            return await use_case.execute(product_id, body.image_ids)
+
+    images = await _execute_or_raise(_reorder())
+    return [AdminProductImageResponse.from_domain(image) for image in images]
