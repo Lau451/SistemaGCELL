@@ -45,12 +45,12 @@ Chain strategy: stacked-to-main
 - [x] 3.4 GREEN: `shared/infrastructure/supabase_storage.py` (httpx adapter); `config.py` (`supabase_url`, `supabase_service_role_key`); `dependencies.py` `require_storage`; add pillow/python-multipart/httpx to `pyproject.toml` runtime deps + `.env.example`
 
 ## Phase 4: Use Cases (PR4, ~420)
-- [ ] 4.1 RED: upload — DB insert failure triggers exactly one compensating `delete(path)` + re-raise; foreign `variant_id` → not-found before any storage call, spy asserts zero calls (spec: admin-product-images "Compensation", "Ownership")
-- [ ] 4.2 GREEN: `products/application/upload_product_image.py`
-- [ ] 4.3 RED: delete — storage delete raising on removal still returns success, row deleted (spec: "Delete Is Hard")
-- [ ] 4.4 GREEN: `products/application/delete_product_image.py`
-- [ ] 4.5 RED: reorder — foreign image id → not-found, zero writes; list missing a product's own image id → not-found, zero writes (spec: "Reorder Replaces")
-- [ ] 4.6 GREEN: `products/application/reorder_product_image.py`
+- [x] 4.1 RED: upload — DB insert failure triggers exactly one compensating `delete(path)` + re-raise; foreign `variant_id` → not-found before any storage call, spy asserts zero calls (spec: admin-product-images "Compensation", "Ownership")
+- [x] 4.2 GREEN: `products/application/upload_product_image.py`
+- [x] 4.3 RED: delete — storage delete raising on removal still returns success, row deleted (spec: "Delete Is Hard")
+- [x] 4.4 GREEN: `products/application/delete_product_image.py`
+- [x] 4.5 RED: reorder — foreign image id → not-found, zero writes; list missing a product's own image id → not-found, zero writes (spec: "Reorder Replaces")
+- [x] 4.6 GREEN: `products/application/reorder_product_image.py`
 
 ## Phase 5: Admin Routes (PR5, ~380)
 - [x] 5.1 Reconcile `specs/admin-api-access/spec.md` endpoint list with `design.md` Decisions 6/7 (single `PUT .../images/order`, no separate replace endpoint) — DONE, orchestrator rewrote the spec requirement directly (GET/POST/DELETE/PUT only, no replace route)
