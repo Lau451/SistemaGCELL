@@ -518,3 +518,241 @@ describe("retireVariantAction", () => {
     expect(REDIRECT).toHaveBeenCalledWith("/admin/login");
   });
 });
+
+describe("signedQuantityDelta", () => {
+  it("returns a positive delta for restock, ignoring direction", async () => {
+    const { signedQuantityDelta } = await importActions();
+
+    expect(signedQuantityDelta("restock", 5, "decrease")).toBe(5);
+  });
+
+  it("returns a positive delta for return, ignoring direction", async () => {
+    const { signedQuantityDelta } = await importActions();
+
+    expect(signedQuantityDelta("return", 3, "decrease")).toBe(3);
+  });
+
+  it("returns a negative delta for sale, ignoring direction", async () => {
+    const { signedQuantityDelta } = await importActions();
+
+    expect(signedQuantityDelta("sale", 3, "increase")).toBe(-3);
+  });
+
+  it("returns a negative delta for breakage, ignoring direction", async () => {
+    const { signedQuantityDelta } = await importActions();
+
+    expect(signedQuantityDelta("breakage", 2, "increase")).toBe(-2);
+  });
+
+  it("honours direction=increase for adjustment", async () => {
+    const { signedQuantityDelta } = await importActions();
+
+    expect(signedQuantityDelta("adjustment", 4, "increase")).toBe(4);
+  });
+
+  it("honours direction=decrease for adjustment", async () => {
+    const { signedQuantityDelta } = await importActions();
+
+    expect(signedQuantityDelta("adjustment", 4, "decrease")).toBe(-4);
+  });
+});
+
+describe("recordStockMovementAction", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("relays a POST to the variant-scoped stock movements path with the computed quantity_delta", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: { variant_id: "v1", movement_type: "restock", quantity_delta: 10, reason: null },
+    });
+
+    const { recordStockMovementAction } = await importActions();
+    await recordStockMovementAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        "variant-id": "v1",
+        "movement-type": "restock",
+        magnitude: "10",
+      }),
+    );
+
+    expect(ADMIN_BACKEND_FETCH).toHaveBeenCalledWith(
+      "/admin/products/p1/variants/v1/stock/movements",
+      expect.objectContaining({
+        method: "POST",
+        body: { movement_type: "restock", quantity_delta: 10 },
+      }),
+    );
+  });
+
+  it("relays quantity_delta as a JS number, not a string", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: {},
+    });
+
+    const { recordStockMovementAction } = await importActions();
+    await recordStockMovementAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        "variant-id": "v1",
+        "movement-type": "sale",
+        magnitude: "3",
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: { quantity_delta: unknown } },
+    ];
+    expect(init.body.quantity_delta).toBe(-3);
+    expect(typeof init.body.quantity_delta).toBe("number");
+  });
+
+  it("honours direction for adjustment movements", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: {},
+    });
+
+    const { recordStockMovementAction } = await importActions();
+    await recordStockMovementAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        "variant-id": "v1",
+        "movement-type": "adjustment",
+        magnitude: "4",
+        direction: "decrease",
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: { quantity_delta: unknown } },
+    ];
+    expect(init.body.quantity_delta).toBe(-4);
+  });
+
+  it("omits reason when blank", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: {},
+    });
+
+    const { recordStockMovementAction } = await importActions();
+    await recordStockMovementAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        "variant-id": "v1",
+        "movement-type": "adjustment",
+        magnitude: "2",
+        direction: "decrease",
+        reason: "   ",
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: Record<string, unknown> },
+    ];
+    expect(init.body).not.toHaveProperty("reason");
+  });
+
+  it("includes reason when provided", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: {},
+    });
+
+    const { recordStockMovementAction } = await importActions();
+    await recordStockMovementAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        "variant-id": "v1",
+        "movement-type": "breakage",
+        magnitude: "1",
+        reason: "Dropped in warehouse",
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: { reason?: unknown } },
+    ];
+    expect(init.body.reason).toBe("Dropped in warehouse");
+  });
+
+  it("on 201, revalidates the product detail page and clears the error", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: {},
+    });
+
+    const { recordStockMovementAction } = await importActions();
+    const result = await recordStockMovementAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        "variant-id": "v1",
+        "movement-type": "restock",
+        magnitude: "1",
+      }),
+    );
+
+    expect(REVALIDATE_PATH).toHaveBeenCalledWith("/admin/products/p1");
+    expect(result.error).toBeNull();
+  });
+
+  it("on 422, returns an error state and does NOT revalidate", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 422,
+      body: { detail: "Unknown movement type" },
+    });
+
+    const { recordStockMovementAction } = await importActions();
+    const result = await recordStockMovementAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        "variant-id": "v1",
+        "movement-type": "theft",
+        magnitude: "1",
+      }),
+    );
+
+    expect(result.error).toBe("Unknown movement type");
+    expect(REVALIDATE_PATH).not.toHaveBeenCalled();
+  });
+
+  it("on unauthenticated outcome, redirects to /admin/login", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({ outcome: "unauthenticated" });
+
+    const { recordStockMovementAction } = await importActions();
+    await recordStockMovementAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        "variant-id": "v1",
+        "movement-type": "restock",
+        magnitude: "1",
+      }),
+    );
+
+    expect(REDIRECT).toHaveBeenCalledWith("/admin/login");
+  });
+});

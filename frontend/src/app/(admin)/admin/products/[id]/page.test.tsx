@@ -71,6 +71,15 @@ describe("EditProductPage", () => {
             json: () => Promise.resolve([]),
           } as Response;
         }
+        if (url.endsWith("/stock")) {
+          return {
+            ok: true,
+            json: () =>
+              Promise.resolve([
+                { variant_id: "v1", color: "negro", quantity_on_hand: 5 },
+              ]),
+          } as Response;
+        }
         return {
           ok: true,
           json: () =>
@@ -99,10 +108,16 @@ describe("EditProductPage", () => {
     expect(screen.getByLabelText(/^model$/i)).toHaveValue("iPhone 15");
     expect(screen.getByLabelText(/color/i)).toHaveValue("negro");
     expect(screen.queryByLabelText(/slug/i)).not.toBeInTheDocument();
+    // `StockManager` (Phase B / PR2) renders below the images, sourced
+    // from the new `fetchAdminProductStock` proxy call.
+    expect(
+      screen.getByText("negro", { selector: "span.font-medium" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
 
-    // Product fetch, then images fetch (Phase 7) — same self-referential,
-    // cookie-forwarded pattern for both.
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // Product fetch, then images fetch, then stock fetch — same
+    // self-referential, cookie-forwarded pattern for all three.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
     const [productUrl, productInit] = fetchSpy.mock.calls[0];
     expect(String(productUrl)).toBe(
       "http://localhost:3000/api/admin/products/p1",
@@ -115,6 +130,13 @@ describe("EditProductPage", () => {
       "http://localhost:3000/api/admin/products/p1/images",
     );
     expect((imagesInit as RequestInit).headers).toMatchObject({
+      cookie: "sb-access-token=abc",
+    });
+    const [stockUrl, stockInit] = fetchSpy.mock.calls[2];
+    expect(String(stockUrl)).toBe(
+      "http://localhost:3000/api/admin/products/p1/stock",
+    );
+    expect((stockInit as RequestInit).headers).toMatchObject({
       cookie: "sb-access-token=abc",
     });
   });

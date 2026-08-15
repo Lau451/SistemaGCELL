@@ -42,13 +42,13 @@ testable without the other, and independently revertible.
 
 ## Phase B: Frontend (PR 2, ~600-650 lines)
 
-- [ ] B.1 RED `frontend/src/app/(admin)/admin/products/actions.test.ts`: `signedQuantityDelta` — restock/return → positive, sale/breakage → negative, adjustment honours `direction` (design.md Testing Strategy "Unit — frontend"; spec: admin-stock-management "Admin UI Derives Movement Sign From Type")
-- [ ] B.2 GREEN `frontend/src/app/(admin)/admin/products/actions.ts`: export `signedQuantityDelta(movementType, magnitude, direction)`
-- [ ] B.3 RED `actions.test.ts`: `recordStockMovementAction` builds the variant-scoped path (`.../variants/{id}/stock/movements`) and JSON body from `FormData`; omits blank `reason`; relays `quantity_delta` as a number; 201 → `revalidatePath(detail)` + `{error: null}`; non-201 → `extractAdminError`; unauthenticated → redirect to login (design.md Testing Strategy "Unit — frontend")
-- [ ] B.4 GREEN `actions.ts`: `recordStockMovementAction(productId, _prevState, formData)` using `adminBackendFetch`
-- [ ] B.5 RED `frontend/src/app/api/admin/products/[id]/stock/__tests__/route.test.ts`: GET proxy mirrors `[id]/images/route.ts` precedent (auth cookie passthrough, backend error passthrough)
-- [ ] B.6 GREEN `frontend/src/app/api/admin/products/[id]/stock/route.ts`: GET proxy calling `GET /admin/products/{id}/stock`
-- [ ] B.7 RED `frontend/src/app/(admin)/admin/products/stock-manager.test.tsx`: a `0`-quantity variant row renders the zero-stock highlight class, a non-zero row does not (spec: admin-stock-management "Zero-Stock Variants Are Visually Distinguished"); record form submits via `recordStockMovementAction.bind(null, productId)` with variant select + positive magnitude + `movement_type` (design.md Testing Strategy "Unit — frontend")
-- [ ] B.8 GREEN `frontend/src/app/(admin)/admin/products/stock-manager.tsx`: `StockManagerProps { productId, initialStock }`, table + single record form (Decisions 6, 7, 8)
-- [ ] B.9 GREEN wire into `frontend/src/app/(admin)/admin/products/[id]/page.tsx`: add `fetchAdminProductStock` and render `<StockManager>`; update `[id]/page.test.tsx` to cover the new fetch + render
-- [ ] B.10 Verify existing public-catalog, admin-auth, admin-CRUD, admin-image, and all `stock/` suites pass unmodified
+- [x] B.1 RED `frontend/src/app/(admin)/admin/products/actions.test.ts`: `signedQuantityDelta` — restock/return → positive, sale/breakage → negative, adjustment honours `direction` (design.md Testing Strategy "Unit — frontend"; spec: admin-stock-management "Admin UI Derives Movement Sign From Type")
+- [x] B.2 GREEN `frontend/src/app/(admin)/admin/products/actions.ts`: export `signedQuantityDelta(movementType, magnitude, direction)`
+- [x] B.3 RED `actions.test.ts`: `recordStockMovementAction` builds the variant-scoped path (`.../variants/{id}/stock/movements`) and JSON body from `FormData`; omits blank `reason`; relays `quantity_delta` as a number; 201 → `revalidatePath(detail)` + `{error: null}`; non-201 → `extractAdminError`; unauthenticated → redirect to login (design.md Testing Strategy "Unit — frontend")
+- [x] B.4 GREEN `actions.ts`: `recordStockMovementAction(productId, _prevState, formData)` using `adminBackendFetch`
+- [x] B.5 RED `frontend/src/app/api/admin/products/[id]/stock/__tests__/route.test.ts`: GET proxy mirrors `[id]/images/route.ts` precedent (auth cookie passthrough, backend error passthrough)
+- [x] B.6 GREEN `frontend/src/app/api/admin/products/[id]/stock/route.ts`: GET proxy calling `GET /admin/products/{id}/stock`
+- [x] B.7 RED `frontend/src/app/(admin)/admin/products/stock-manager.test.tsx`: a `0`-quantity variant row renders the zero-stock highlight class, a non-zero row does not (spec: admin-stock-management "Zero-Stock Variants Are Visually Distinguished"); record form submits via `recordStockMovementAction.bind(null, productId)` with variant select + positive magnitude + `movement_type` (design.md Testing Strategy "Unit — frontend")
+- [x] B.8 GREEN `frontend/src/app/(admin)/admin/products/stock-manager.tsx`: `StockManagerProps { productId, initialStock }`, table + single record form (Decisions 6, 7, 8)
+- [x] B.9 GREEN wire into `frontend/src/app/(admin)/admin/products/[id]/page.tsx`: add `fetchAdminProductStock` and render `<StockManager>`; update `[id]/page.test.tsx` to cover the new fetch + render
+- [x] B.10 Verify existing public-catalog, admin-auth, admin-CRUD, admin-image, and all `stock/` suites pass unmodified

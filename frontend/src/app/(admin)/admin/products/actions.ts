@@ -250,6 +250,93 @@ export async function reorderProductImagesAction(
   return { error: extractAdminError(result.status, result.body) };
 }
 
+/**
+ * Sign derivation for stock movements (design.md Decision 7): the admin
+ * always enters a positive magnitude; `restock`/`return` are always `+`,
+ * `sale`/`breakage` are always `-`, and `direction` is honoured ONLY for
+ * `adjustment` — for every other type `direction` is ignored, so a
+ * wrong-sign submission is unreachable through the UI. Pure function, no
+ * side effects, exported for direct unit testing.
+ */
+export type MovementDirection = "increase" | "decrease";
+
+const POSITIVE_MOVEMENT_TYPES = new Set(["restock", "return"]);
+const NEGATIVE_MOVEMENT_TYPES = new Set(["sale", "breakage"]);
+
+export function signedQuantityDelta(
+  movementType: string,
+  magnitude: number,
+  direction: MovementDirection,
+): number {
+  if (POSITIVE_MOVEMENT_TYPES.has(movementType)) {
+    return magnitude;
+  }
+  if (NEGATIVE_MOVEMENT_TYPES.has(movementType)) {
+    return -magnitude;
+  }
+  // `adjustment` (and any unrecognized type — the domain rejects it with
+  // 422, not this function) — sign follows the explicit `direction`.
+  return direction === "decrease" ? -magnitude : magnitude;
+}
+
+/**
+ * Record a stock movement for a single variant — `stock-manager.tsx`'s
+ * single record form. Builds the variant-scoped path and derives
+ * `quantity_delta`'s sign via `signedQuantityDelta` client-side (Decision
+ * 7) before relaying JSON to `RecordVariantStockMovementUseCase` (already
+ * live from PR1). `reason` is optional for every movement type (spec:
+ * "Reason Is Optional On Every Movement Type") and is omitted from the
+ * body entirely when blank, rather than sent as an empty string.
+ */
+export async function recordStockMovementAction(
+  productId: string,
+  _prevState: ProductFormState,
+  formData: FormData,
+): Promise<ProductFormState> {
+  const variantId = String(formData.get("variant-id") ?? "");
+  const movementType = String(formData.get("movement-type") ?? "");
+  const magnitude = Number(formData.get("magnitude") ?? 0);
+  const direction = (
+    formData.get("direction") === "decrease" ? "decrease" : "increase"
+  ) satisfies MovementDirection;
+  const quantityDelta = signedQuantityDelta(movementType, magnitude, direction);
+
+  const reasonRaw = formData.get("reason");
+  const reason =
+    typeof reasonRaw === "string" && reasonRaw.trim() !== ""
+      ? reasonRaw
+      : undefined;
+
+  const body: {
+    movement_type: string;
+    quantity_delta: number;
+    reason?: string;
+  } = { movement_type: movementType, quantity_delta: quantityDelta };
+  if (reason !== undefined) {
+    body.reason = reason;
+  }
+
+  const result = await adminBackendFetch(
+    `/admin/products/${productId}/variants/${variantId}/stock/movements`,
+    { method: "POST", body },
+  );
+
+  if (result.outcome === "unauthenticated") {
+    redirect(ADMIN_LOGIN_PATH);
+  }
+
+  if (result.outcome === "backend_unavailable") {
+    return { error: BACKEND_UNAVAILABLE_MESSAGE };
+  }
+
+  if (result.status === 201) {
+    revalidatePath(adminProductDetailPath(productId));
+    return { error: null };
+  }
+
+  return { error: extractAdminError(result.status, result.body) };
+}
+
 export async function retireVariantAction(formData: FormData): Promise<void> {
   const productId = String(formData.get("product-id") ?? "");
   const variantId = String(formData.get("variant-id") ?? "");
