@@ -30,20 +30,26 @@ route, with no separate or weaker verification path.
 #### Scenario: Authenticated request reaches the stock use cases
 - GIVEN a valid admin JWT
 - WHEN an admin issues the stock read or record-movement request
-- THEN the route handler MUST invoke `StockLevelReader.quantity_on_hand` or
-  `RecordStockMovementUseCase.execute` respectively, calling only the
-  existing `stock/` use cases with no new port or use case
+- THEN the read route handler MUST invoke `StockLevelReader.quantity_on_hand`
+  directly, and the write route handler MUST invoke
+  `RecordVariantStockMovementUseCase.execute` (which itself resolves
+  ownership before delegating to the existing `RecordStockMovementUseCase`),
+  introducing no new port and no `stock/` domain or infrastructure change
 
 ### Requirement: Unknown Variant Errors Map To 404
 
 `_execute_or_raise` MUST map `UnknownVariantError` to `404 "not_found"` on
-every admin route that resolves a `variant_id`, including the stock
-record-movement route, so a stale or foreign `variant_id` surfaces as `404`
-rather than the previously unmapped `500`.
+every admin route that resolves a `variant_id`, so a stale or foreign
+`variant_id` surfaces as `404` rather than the previously unmapped `500`.
+On the stock record-movement route specifically, `RecordVariantStockMovementUseCase`'s
+ownership scan already rejects a foreign or unknown `variant_id` with
+`VariantNotFoundError`/`ProductNotFoundError` before the repository's `record`
+call is ever reached, so `UnknownVariantError` is unreachable end-to-end
+through that route; the mapping is defense-in-depth and MUST be proven at
+the `_execute_or_raise` mapper directly, not as an API-level scenario.
 
-#### Scenario: UnknownVariantError on the stock route yields 404, not 500
-- GIVEN a record-movement request referencing a `variant_id` that does not
-  belong to the addressed `product_id`
-- WHEN the use case raises `UnknownVariantError`
-- THEN `_execute_or_raise` MUST translate it to `404 "not_found"`
+#### Scenario: UnknownVariantError maps to 404, not 500, at the mapper
+- GIVEN an operation that raises `UnknownVariantError`
+- WHEN `_execute_or_raise` handles it
+- THEN it MUST translate it to `404 "not_found"`
 - AND the response MUST NOT be a `500`
