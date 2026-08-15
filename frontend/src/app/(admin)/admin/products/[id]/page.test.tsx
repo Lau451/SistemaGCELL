@@ -22,11 +22,27 @@ vi.mock("next/headers", () => ({
   ),
 }));
 
+const ROUTER_REFRESH = vi.fn();
+
 vi.mock("next/navigation", () => ({
   notFound: (...args: unknown[]) => {
     NOT_FOUND(...args);
     throw new Error("NEXT_NOT_FOUND");
   },
+  // `ImageManager` (Phase 7) calls `useRouter().refresh()` after a
+  // mutation — this page's render tree now includes it, so the mock must
+  // cover both exports the module tree needs.
+  useRouter: () => ({ refresh: ROUTER_REFRESH }),
+}));
+
+// `ImageManager` resolves thumbnail `src` via the same public-URL builder
+// the catalog pages use — mocked here the same way `api/catalog/route.test.ts`
+// mocks it, so this test doesn't depend on a real `NEXT_PUBLIC_SUPABASE_URL`.
+vi.mock("@/lib/supabase/env", () => ({
+  getCatalogSupabaseEnv: () => ({
+    url: "http://127.0.0.1:54321",
+    anonKey: "anon-key",
+  }),
 }));
 
 async function importPage() {
@@ -45,19 +61,35 @@ describe("EditProductPage", () => {
   });
 
   it("fetches the product via /api/admin/products/{id}, forwarding the request cookie, and prefills the form", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          id: "p1",
-          slug: "funda-iphone-15",
-          name: "Funda iPhone 15",
-          model: "iPhone 15",
-          variants: [
-            { id: "v1", color: "negro", price: "5000.00", cost: "2000.00" },
-          ],
-        }),
-    } as Response);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/images")) {
+          return {
+            ok: true,
+            json: () => Promise.resolve([]),
+          } as Response;
+        }
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              id: "p1",
+              slug: "funda-iphone-15",
+              name: "Funda iPhone 15",
+              model: "iPhone 15",
+              variants: [
+                {
+                  id: "v1",
+                  color: "negro",
+                  price: "5000.00",
+                  cost: "2000.00",
+                },
+              ],
+            }),
+        } as Response;
+      });
 
     const EditProductPage = await importPage();
     const jsx = await EditProductPage(paramsFor("p1"));
@@ -68,12 +100,21 @@ describe("EditProductPage", () => {
     expect(screen.getByLabelText(/color/i)).toHaveValue("negro");
     expect(screen.queryByLabelText(/slug/i)).not.toBeInTheDocument();
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [requestUrl, requestInit] = fetchSpy.mock.calls[0];
-    expect(String(requestUrl)).toBe(
+    // Product fetch, then images fetch (Phase 7) — same self-referential,
+    // cookie-forwarded pattern for both.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const [productUrl, productInit] = fetchSpy.mock.calls[0];
+    expect(String(productUrl)).toBe(
       "http://localhost:3000/api/admin/products/p1",
     );
-    expect((requestInit as RequestInit).headers).toMatchObject({
+    expect((productInit as RequestInit).headers).toMatchObject({
+      cookie: "sb-access-token=abc",
+    });
+    const [imagesUrl, imagesInit] = fetchSpy.mock.calls[1];
+    expect(String(imagesUrl)).toBe(
+      "http://localhost:3000/api/admin/products/p1/images",
+    );
+    expect((imagesInit as RequestInit).headers).toMatchObject({
       cookie: "sb-access-token=abc",
     });
   });

@@ -13,11 +13,18 @@
  * never changes after creation (spec: "Slug never changes after
  * creation, even on rename").
  *
+ * Also fetches this product's images via the sibling
+ * `app/api/admin/products/{id}/images` proxy (same self-referential,
+ * cookie-forwarded fetch pattern as `fetchAdminProduct`) and renders
+ * `ImageManager` below the form — the only surface for the upload/
+ * delete/reorder Server Actions (Phase 7).
+ *
  * @see design.md "Data Flow"
  */
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { updateProductAction } from "../actions";
+import { ImageManager, type AdminProductImage } from "../image-manager";
 import { ProductForm, type ProductFormVariant } from "../product-form";
 
 interface AdminProduct {
@@ -53,6 +60,29 @@ async function fetchAdminProduct(id: string): Promise<AdminProduct | null> {
   return response.json();
 }
 
+async function fetchAdminProductImages(
+  id: string,
+): Promise<AdminProductImage[]> {
+  const headerList = await headers();
+  const host = headerList.get("host");
+  const protocol = headerList.get("x-forwarded-proto") ?? "http";
+  const cookie = headerList.get("cookie") ?? "";
+
+  const response = await fetch(
+    `${protocol}://${host}/api/admin/products/${id}/images`,
+    {
+      headers: { cookie },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    return [];
+  }
+
+  return response.json();
+}
+
 export default async function EditProductPage({
   params,
 }: EditProductPageProps) {
@@ -63,6 +93,7 @@ export default async function EditProductPage({
     notFound();
   }
 
+  const images = await fetchAdminProductImages(product.id);
   const updateAction = updateProductAction.bind(null, product.id);
 
   return (
@@ -75,6 +106,11 @@ export default async function EditProductPage({
         initialVariants={product.variants}
         action={updateAction}
         submitLabel="Save changes"
+      />
+      <ImageManager
+        productId={product.id}
+        variants={product.variants}
+        initialImages={images}
       />
     </div>
   );

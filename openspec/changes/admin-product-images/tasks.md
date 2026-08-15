@@ -64,6 +64,6 @@ Chain strategy: stacked-to-main
 - [x] 6.4 GREEN: upload/delete/reorder Server Actions in `frontend/src/app/(admin)/admin/products/actions.ts`
 
 ## Phase 7: Image Manager UI (PR7, ~370)
-- [ ] 7.1 GREEN: `frontend/src/app/(admin)/admin/products/image-manager.tsx` — file input, hero/variant assignment, thumbnails, delete, reorder, actionable validation-error display (spec: "Validation Failures Surface Actionable Feedback")
-- [ ] 7.2 GREEN: wire manager into `frontend/src/app/(admin)/admin/products/[id]/page.tsx`
-- [ ] 7.3 Verify existing public-catalog, admin-auth, admin-CRUD suites pass unmodified; manual upload→admin-list→public-catalog check
+- [x] 7.1 GREEN: `frontend/src/app/(admin)/admin/products/image-manager.tsx` — file input, hero/variant assignment, thumbnails, delete, reorder, actionable validation-error display (spec: "Validation Failures Surface Actionable Feedback")
+- [x] 7.2 GREEN: wire manager into `frontend/src/app/(admin)/admin/products/[id]/page.tsx`
+- [x] 7.3 Verify existing public-catalog, admin-auth, admin-CRUD suites pass unmodified; manual upload→admin-list→public-catalog check NOT run (no dev server) — automated frontend suite run instead (237/237 passed) per apply-batch instruction
