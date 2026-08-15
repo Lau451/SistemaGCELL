@@ -68,6 +68,16 @@ from gcell.shared.infrastructure.dependencies import (
 )
 from gcell.shared.infrastructure.pillow_image_normalizer import PillowImageNormalizer
 from gcell.shared.infrastructure.supabase_storage import SupabaseStorage
+from gcell.stock.application.exceptions import UnknownVariantError
+from gcell.stock.application.record_stock_movement import RecordStockMovementUseCase
+from gcell.stock.application.record_variant_stock_movement import (
+    RecordVariantStockMovementUseCase,
+)
+from gcell.stock.domain.stock_movement import StockMovement
+from gcell.stock.infrastructure.postgres_stock_level_reader import PostgresStockLevelReader
+from gcell.stock.infrastructure.postgres_stock_movement_repository import (
+    PostgresStockMovementRepository,
+)
 
 router = APIRouter(
     prefix="/admin",
@@ -98,11 +108,19 @@ async def _execute_or_raise[T](operation: Awaitable[T]) -> T:
         # case (admin-product-images spec "Upload Validation Runs Before
         # Any Storage Write").
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except (ProductNotFoundError, VariantNotFoundError, ImageNotFoundError):
-        # Same generic body for all three -- a variant/image belonging to
-        # a different product must never be distinguishable from an
-        # unknown id (IDOR). `ImageNotFoundError` also covers a foreign id
-        # inside a reorder request's ordered list.
+    except (
+        ProductNotFoundError,
+        VariantNotFoundError,
+        ImageNotFoundError,
+        UnknownVariantError,
+    ):
+        # Same generic body for all four -- a variant/image belonging to a
+        # different product must never be distinguishable from an unknown
+        # id (IDOR). `ImageNotFoundError` also covers a foreign id inside a
+        # reorder request's ordered list. `UnknownVariantError` is
+        # defense-in-depth for the stock record-movement route -- the
+        # use-case-layer ownership guard already 404s first, so this branch
+        # is unreachable end-to-end (design.md Decision 3).
         raise HTTPException(status_code=404, detail="not_found") from None
     except DuplicateProductSlugError:
         raise HTTPException(status_code=409, detail="slug_conflict") from None
@@ -387,3 +405,96 @@ async def reorder_admin_product_images(
 
     images = await _execute_or_raise(_reorder())
     return [AdminProductImageResponse.from_domain(image) for image in images]
+
+
+# ---------------------------------------------------------------------------
+# Stock (design.md "Endpoints"). GET composes `PostgresProductRepository` +
+# `PostgresStockLevelReader` directly in the route handler -- a read, same
+# precedent as `list_admin_product_images` and `get_admin_product` (design.md
+# Decision 2: a use case here would own no decision beyond a `for` loop).
+# POST calls `RecordVariantStockMovementUseCase`, never
+# `PostgresProductRepository`/`PostgresStockMovementRepository` methods
+# directly, matching every other write route's rule. Neither route depends
+# on `require_storage` -- this change touches no Storage.
+# ---------------------------------------------------------------------------
+
+
+class AdminVariantStockResponse(BaseModel):
+    variant_id: UUID
+    color: str  # display context; the UI never re-fetches variants for this
+    quantity_on_hand: int
+
+    @classmethod
+    def from_domain(
+        cls, variant: ProductVariant, quantity_on_hand: int
+    ) -> "AdminVariantStockResponse":
+        return cls(variant_id=variant.id, color=variant.color, quantity_on_hand=quantity_on_hand)
+
+
+class AdminRecordStockMovementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    movement_type: str  # design.md Decision 4: plain str, MovementType stays the source of truth
+    quantity_delta: int
+    reason: str | None = None  # optional for EVERY type (proposal Q1)
+
+
+class AdminStockMovementResponse(BaseModel):
+    variant_id: UUID
+    movement_type: str
+    quantity_delta: int
+    reason: str | None
+
+    @classmethod
+    def from_domain(cls, movement: StockMovement) -> "AdminStockMovementResponse":
+        return cls(
+            variant_id=movement.variant_id,
+            movement_type=str(movement.movement_type),
+            quantity_delta=movement.quantity_delta,
+            reason=movement.reason,
+        )
+
+
+@router.get("/products/{product_id}/stock")
+async def get_admin_product_stock(
+    product_id: UUID,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+) -> list[AdminVariantStockResponse]:
+    async with pool.acquire() as conn:
+        product = await PostgresProductRepository(conn).get_by_id(product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        reader = PostgresStockLevelReader(conn)
+        return [
+            AdminVariantStockResponse.from_domain(
+                variant, await reader.quantity_on_hand(variant.id)
+            )
+            for variant in product.variants
+        ]
+
+
+@router.post("/products/{product_id}/variants/{variant_id}/stock/movements", status_code=201)
+async def record_admin_variant_stock_movement(
+    product_id: UUID,
+    variant_id: UUID,
+    body: AdminRecordStockMovementRequest,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+) -> AdminStockMovementResponse:
+    async def _record() -> StockMovement:
+        async with pool.acquire() as conn:
+            use_case = RecordVariantStockMovementUseCase(
+                products=PostgresProductRepository(conn),
+                record_movement=RecordStockMovementUseCase(
+                    repository=PostgresStockMovementRepository(conn)
+                ),
+            )
+            return await use_case.execute(
+                product_id=product_id,
+                variant_id=variant_id,
+                movement_type=body.movement_type,
+                quantity_delta=body.quantity_delta,
+                reason=body.reason,
+            )
+
+    movement = await _execute_or_raise(_record())
+    return AdminStockMovementResponse.from_domain(movement)
