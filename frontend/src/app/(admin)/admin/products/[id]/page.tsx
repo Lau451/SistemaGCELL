@@ -24,6 +24,14 @@
  * renders `StockManager` below the images — the only surface for
  * `recordStockMovementAction` (Phase B / admin-stock-management).
  *
+ * Also fetches the first variant's stock movement history via the sibling
+ * `app/api/admin/products/{id}/variants/{variantId}/stock/movements`
+ * proxy (same pattern again) and renders `StockHistory` below
+ * `StockManager` (admin-stock-movement-history). Multi-variant products
+ * prefetch only `variants[0]`'s history server-side — switching variants
+ * is a client-side fetch through the same proxy (design.md Open
+ * Questions, consistent with proposal Q3's "one variant at a time").
+ *
  * @see design.md "Data Flow"
  */
 import { notFound } from "next/navigation";
@@ -32,6 +40,10 @@ import { updateProductAction } from "../actions";
 import { ImageManager, type AdminProductImage } from "../image-manager";
 import { ProductForm, type ProductFormVariant } from "../product-form";
 import { StockManager, type AdminVariantStock } from "../stock-manager";
+import {
+  StockHistory,
+  type AdminStockMovementPage,
+} from "../stock-history";
 
 interface AdminProduct {
   id: string;
@@ -112,6 +124,35 @@ async function fetchAdminProductStock(
   return response.json();
 }
 
+const EMPTY_STOCK_HISTORY: AdminStockMovementPage = {
+  items: [],
+  next_before_id: null,
+};
+
+async function fetchAdminProductStockHistory(
+  id: string,
+  variantId: string,
+): Promise<AdminStockMovementPage> {
+  const headerList = await headers();
+  const host = headerList.get("host");
+  const protocol = headerList.get("x-forwarded-proto") ?? "http";
+  const cookie = headerList.get("cookie") ?? "";
+
+  const response = await fetch(
+    `${protocol}://${host}/api/admin/products/${id}/variants/${variantId}/stock/movements`,
+    {
+      headers: { cookie },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    return EMPTY_STOCK_HISTORY;
+  }
+
+  return response.json();
+}
+
 export default async function EditProductPage({
   params,
 }: EditProductPageProps) {
@@ -124,6 +165,10 @@ export default async function EditProductPage({
 
   const images = await fetchAdminProductImages(product.id);
   const stock = await fetchAdminProductStock(product.id);
+  const firstVariantId = product.variants[0]?.id;
+  const stockHistory = firstVariantId
+    ? await fetchAdminProductStockHistory(product.id, firstVariantId)
+    : EMPTY_STOCK_HISTORY;
   const updateAction = updateProductAction.bind(null, product.id);
 
   return (
@@ -143,6 +188,13 @@ export default async function EditProductPage({
         initialImages={images}
       />
       <StockManager productId={product.id} initialStock={stock} />
+      {firstVariantId && (
+        <StockHistory
+          productId={product.id}
+          variantId={firstVariantId}
+          initialHistory={stockHistory}
+        />
+      )}
     </div>
   );
 }

@@ -80,6 +80,25 @@ describe("EditProductPage", () => {
               ]),
           } as Response;
         }
+        if (url.includes("/variants/") && url.endsWith("/stock/movements")) {
+          return {
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: 3,
+                    variant_id: "v1",
+                    movement_type: "restock",
+                    quantity_delta: 8,
+                    reason: null,
+                    created_at: "2026-08-14T10:00:00Z",
+                  },
+                ],
+                next_before_id: null,
+              }),
+          } as Response;
+        }
         return {
           ok: true,
           json: () =>
@@ -114,10 +133,17 @@ describe("EditProductPage", () => {
       screen.getByText("negro", { selector: "span.font-medium" }),
     ).toBeInTheDocument();
     expect(screen.getByText("5")).toBeInTheDocument();
+    // `StockHistory` (Phase B / PR2) renders below `StockManager`, sourced
+    // from the new `fetchAdminProductStockHistory` proxy call, prefetched
+    // server-side for `variants[0]` only.
+    expect(screen.getByText("Movement history")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByRole("listitem")).toHaveTextContent("restock");
 
-    // Product fetch, then images fetch, then stock fetch — same
-    // self-referential, cookie-forwarded pattern for all three.
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    // Product fetch, then images fetch, then stock fetch, then stock
+    // history fetch — same self-referential, cookie-forwarded pattern for
+    // all four.
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
     const [productUrl, productInit] = fetchSpy.mock.calls[0];
     expect(String(productUrl)).toBe(
       "http://localhost:3000/api/admin/products/p1",
@@ -137,6 +163,13 @@ describe("EditProductPage", () => {
       "http://localhost:3000/api/admin/products/p1/stock",
     );
     expect((stockInit as RequestInit).headers).toMatchObject({
+      cookie: "sb-access-token=abc",
+    });
+    const [historyUrl, historyInit] = fetchSpy.mock.calls[3];
+    expect(String(historyUrl)).toBe(
+      "http://localhost:3000/api/admin/products/p1/variants/v1/stock/movements",
+    );
+    expect((historyInit as RequestInit).headers).toMatchObject({
       cookie: "sb-access-token=abc",
     });
   });
