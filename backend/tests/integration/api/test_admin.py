@@ -42,6 +42,15 @@ class _FakePool:
     def acquire(self):
         return _FakeAcquireCtx()
 
+    def transaction(self):
+        # Additive Decision 3 fix: `shared.infrastructure.postgres.transaction()`
+        # branches on `isinstance(pool_or_conn, asyncpg.Pool)`; `_FakePool` is
+        # not one, so without this method the route's `transaction(pool)` call
+        # would hit the `else` branch and raise `AttributeError` -> 500. Reuses
+        # the same dummy connection as `acquire()` -- no real transaction
+        # semantics are needed here, only the async-CM duck type.
+        return _FakeAcquireCtx()
+
     async def close(self) -> None:
         # `main.py`'s lifespan teardown calls `close_pool` unconditionally
         # on exit; this fake pool is swapped in mid-test, after startup.
@@ -143,6 +152,10 @@ _WRITE_ROUTES = [
 
 class _FakePool:
     def acquire(self):
+        return _FakeAcquireCtx()
+
+    def transaction(self):
+        # See the file's first `_FakePool` for the full Decision 3 rationale.
         return _FakeAcquireCtx()
 
     async def close(self) -> None:

@@ -156,6 +156,96 @@ describe("createProductAction", () => {
     expect(variant.cost).toBe("1234.567");
     expect(typeof variant.cost).toBe("string");
   });
+
+  it("relays initial_quantity as a verbatim string when non-blank (never Number())", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: { id: "p1" },
+    });
+
+    const { createProductAction } = await importActions();
+    await createProductAction(
+      { error: null },
+      formDataFor({
+        name: "Funda iPhone 15",
+        model: "iPhone 15",
+        "variant-id": [""],
+        "variant-color": ["negro"],
+        "variant-price": ["5000.00"],
+        "variant-cost": ["2000.00"],
+        "variant-initial-quantity": ["5"],
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: { variants: Array<{ initial_quantity?: unknown }> } },
+    ];
+    const [variant] = init.body.variants;
+
+    expect(variant.initial_quantity).toBe("5");
+    expect(typeof variant.initial_quantity).toBe("string");
+  });
+
+  it("omits initial_quantity when blank", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: { id: "p1" },
+    });
+
+    const { createProductAction } = await importActions();
+    await createProductAction(
+      { error: null },
+      formDataFor({
+        name: "Funda iPhone 15",
+        model: "iPhone 15",
+        "variant-id": [""],
+        "variant-color": ["negro"],
+        "variant-price": ["5000.00"],
+        "variant-cost": ["2000.00"],
+        "variant-initial-quantity": [""],
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: { variants: Array<Record<string, unknown>> } },
+    ];
+    const [variant] = init.body.variants;
+
+    expect(variant).not.toHaveProperty("initial_quantity");
+  });
+
+  it("omits initial_quantity when the field is absent entirely (edit-form payload shape)", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: { id: "p1" },
+    });
+
+    const { createProductAction } = await importActions();
+    await createProductAction(
+      { error: null },
+      formDataFor({
+        name: "Funda iPhone 15",
+        model: "iPhone 15",
+        "variant-id": [""],
+        "variant-color": ["negro"],
+        "variant-price": ["5000.00"],
+        "variant-cost": ["2000.00"],
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: { variants: Array<Record<string, unknown>> } },
+    ];
+    const [variant] = init.body.variants;
+
+    expect(variant).not.toHaveProperty("initial_quantity");
+  });
 });
 
 describe("updateProductAction", () => {

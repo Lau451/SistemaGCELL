@@ -53,6 +53,7 @@ interface VariantWritePayload {
   color: string;
   price: string;
   cost: string;
+  initial_quantity?: string;
 }
 
 interface ProductWritePayload {
@@ -66,19 +67,32 @@ function buildVariantsPayload(formData: FormData): VariantWritePayload[] {
   const colors = formData.getAll("variant-color");
   const prices = formData.getAll("variant-price");
   const costs = formData.getAll("variant-cost");
+  // Rendered ONLY on the create form's rows (design.md Decision 4) — on the
+  // edit form this array is empty, so `initialQuantities[index]` is always
+  // `undefined` there and the key is never added, matching the backend's
+  // PATCH-ignores-the-field contract.
+  const initialQuantities = formData.getAll("variant-initial-quantity");
 
   const variants: VariantWritePayload[] = [];
   for (let index = 0; index < colors.length; index += 1) {
     const rawId = ids[index];
     const id =
       typeof rawId === "string" && rawId.trim() !== "" ? rawId : undefined;
+    const rawInitialQuantity = initialQuantities[index];
+    const initialQuantity =
+      typeof rawInitialQuantity === "string" && rawInitialQuantity.trim() !== ""
+        ? rawInitialQuantity
+        : undefined;
 
     variants.push({
       ...(id !== undefined ? { id } : {}),
       color: String(colors[index] ?? ""),
       // Verbatim strings — see the file-level money-precision note.
+      // `initial_quantity` follows the SAME convention: never
+      // `Number()`/`parseInt()` here, relayed exactly as submitted.
       price: String(prices[index] ?? ""),
       cost: String(costs[index] ?? ""),
+      ...(initialQuantity !== undefined ? { initial_quantity: initialQuantity } : {}),
     });
   }
   return variants;

@@ -133,6 +133,52 @@ describe("ProductForm", () => {
     });
   });
 
+  it("renders an Initial quantity input for a new row in CREATE mode (no productId)", async () => {
+    const stubAction = vi.fn().mockResolvedValue({ error: null });
+    const user = userEvent.setup();
+    const ProductForm = await importProductForm();
+
+    render(<ProductForm action={stubAction} submitLabel="Create product" />);
+
+    await user.click(screen.getByRole("button", { name: /add variant/i }));
+
+    expect(screen.getByLabelText(/initial quantity/i)).toBeInTheDocument();
+  });
+
+  it("never renders Initial quantity for an existing (already-saved) row", async () => {
+    const stubAction = vi.fn().mockResolvedValue({ error: null });
+    const ProductForm = await importProductForm();
+
+    render(
+      <ProductForm
+        action={stubAction}
+        submitLabel="Save changes"
+        productId="p1"
+        initialName="Funda iPhone 15"
+        initialModel="iPhone 15"
+        initialVariants={[
+          { id: "v1", color: "negro", price: "5000.00", cost: "2000.00" },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/initial quantity/i)).not.toBeInTheDocument();
+  });
+
+  it("never renders Initial quantity for a new row added on the EDIT page (productId present)", async () => {
+    const stubAction = vi.fn().mockResolvedValue({ error: null });
+    const user = userEvent.setup();
+    const ProductForm = await importProductForm();
+
+    render(
+      <ProductForm action={stubAction} submitLabel="Save changes" productId="p1" />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add variant/i }));
+
+    expect(screen.queryByLabelText(/initial quantity/i)).not.toBeInTheDocument();
+  });
+
   it("uses number inputs with step=0.01 and min=0 for price and cost", async () => {
     const stubAction = vi.fn().mockResolvedValue({ error: null });
     const user = userEvent.setup();

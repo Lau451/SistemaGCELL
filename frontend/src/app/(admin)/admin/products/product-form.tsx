@@ -27,6 +27,14 @@
  * Price/cost inputs are `type="number" step="0.01" min="0"` — see
  * `actions.ts`'s file-level comment for why their submitted VALUE is
  * never parsed to a JS number on this form's own side either.
+ *
+ * "Initial quantity" (design.md Decision 4) is rendered ONLY when
+ * `row.id === null && productId === undefined` — i.e. every row on the
+ * CREATE page, and never on the edit page (even for a newly added row
+ * there, since PATCH silently ignores the field — showing it would be
+ * misleading). Submitted as `variant-initial-quantity`, a parallel
+ * repeated field alongside `variant-color`/`variant-price`/`variant-cost`;
+ * `actions.ts`'s `buildVariantsPayload` zips it positionally the same way.
  */
 import { useActionState, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -57,6 +65,7 @@ interface VariantRow {
   color: string;
   price: string;
   cost: string;
+  initialQuantity: string;
 }
 
 const INITIAL_STATE: ProductFormState = { error: null };
@@ -77,6 +86,7 @@ function toInitialRows(variants: ProductFormVariant[] | undefined): VariantRow[]
     color: variant.color,
     price: variant.price,
     cost: variant.cost,
+    initialQuantity: "",
   }));
 }
 
@@ -97,13 +107,20 @@ export function ProductForm({
   function addRow() {
     setRows((previous) => [
       ...previous,
-      { key: nextRowKey(), id: null, color: "", price: "", cost: "" },
+      {
+        key: nextRowKey(),
+        id: null,
+        color: "",
+        price: "",
+        cost: "",
+        initialQuantity: "",
+      },
     ]);
   }
 
   function updateRow(
     key: string,
-    field: "color" | "price" | "cost",
+    field: "color" | "price" | "cost" | "initialQuantity",
     value: string,
   ) {
     setRows((previous) =>
@@ -233,6 +250,28 @@ export function ProductForm({
                 className="border-border rounded-md border px-2 py-1.5 text-sm"
               />
             </div>
+            {row.id === null && productId === undefined && (
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor={`${row.key}-initial-quantity`}
+                  className="text-xs font-medium"
+                >
+                  Initial quantity
+                </label>
+                <input
+                  id={`${row.key}-initial-quantity`}
+                  name="variant-initial-quantity"
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={row.initialQuantity}
+                  onChange={(event) =>
+                    updateRow(row.key, "initialQuantity", event.target.value)
+                  }
+                  className="border-border rounded-md border px-2 py-1.5 text-sm"
+                />
+              </div>
+            )}
             <Button
               type="button"
               variant="outline"

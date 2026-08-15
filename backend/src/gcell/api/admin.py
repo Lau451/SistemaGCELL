@@ -8,7 +8,7 @@ weaker check (admin-api-access spec, "Product Read And Write Endpoints").
 Pydantic response models live here, in `api/`, never in
 `products/domain/` -- the domain boundary test bans `pydantic` there.
 
-Every write route calls a PR2 use case (`CreateProductUseCase`,
+Every write route calls a use case (`CreateStockedProductUseCase`,
 `UpdateProductUseCase`, `RetireProductUseCase`, `RetireVariantUseCase`),
 never `PostgresProductRepository` methods directly -- `UpdateProductUseCase`
 is the ONLY place that guards a variant id against belonging to a
@@ -31,9 +31,8 @@ from uuid import UUID, uuid4
 
 import asyncpg
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from gcell.products.application.create_product import CreateProductUseCase
 from gcell.products.application.delete_product_image import DeleteProductImageUseCase
 from gcell.products.application.exceptions import (
     DuplicateProductSlugError,
@@ -68,7 +67,9 @@ from gcell.shared.infrastructure.dependencies import (
     require_storage,
 )
 from gcell.shared.infrastructure.pillow_image_normalizer import PillowImageNormalizer
+from gcell.shared.infrastructure.postgres import transaction
 from gcell.shared.infrastructure.supabase_storage import SupabaseStorage
+from gcell.stock.application.create_stocked_product import CreateStockedProductUseCase
 from gcell.stock.application.exceptions import UnknownVariantError
 from gcell.stock.application.list_variant_stock_movements import (
     ListVariantStockMovementsUseCase,
@@ -204,6 +205,12 @@ class AdminVariantInput(BaseModel):
     color: str
     price: Decimal
     cost: Decimal
+    # POST-only (admin-product-management spec "Product Creation Accepts An
+    # Optional Initial Quantity Per Variant"): a positive value seeds exactly
+    # one `restock` movement, atomic with product creation. PATCH accepts
+    # (never 422s on) this same field but silently ignores it --
+    # `UpdateProductUseCase` never reads it.
+    initial_quantity: int = Field(default=0, ge=0)
 
 
 class AdminProductWriteRequest(BaseModel):
@@ -215,7 +222,7 @@ class AdminProductWriteRequest(BaseModel):
 
 
 def _to_domain_variants(items: list[AdminVariantInput]) -> list[ProductVariant]:
-    return [
+    variants = [
         ProductVariant(
             id=item.id if item.id is not None else uuid4(),
             color=item.color,
@@ -224,6 +231,21 @@ def _to_domain_variants(items: list[AdminVariantInput]) -> list[ProductVariant]:
         )
         for item in items
     ]
+    # `_to_domain_variants` assigns `uuid4()` to every new variant BEFORE
+    # persistence, so `_to_seed_quantities` (below) can key off these same
+    # ids to build the seed-movement mapping with no ordering problem.
+    return variants
+
+
+def _to_seed_quantities(
+    items: list[AdminVariantInput], variants: list[ProductVariant]
+) -> dict[UUID, int]:
+    # Zipped positionally: `variants` was built from `items` by
+    # `_to_domain_variants` above, in the same order, one entry each.
+    return {
+        variant.id: item.initial_quantity
+        for item, variant in zip(items, variants, strict=True)
+    }
 
 
 @router.post("/products", status_code=201)
@@ -232,13 +254,17 @@ async def create_admin_product(
     pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
 ) -> AdminProductResponse:
     async def _create() -> Product:
-        async with pool.acquire() as conn:
-            repository = PostgresProductRepository(conn)
-            use_case = CreateProductUseCase(repository=repository)
+        async with transaction(pool) as conn:
+            variants = _to_domain_variants(body.variants)
+            use_case = CreateStockedProductUseCase(
+                products=PostgresProductRepository(conn),
+                movements=PostgresStockMovementRepository(conn),
+            )
             return await use_case.execute(
                 name=body.name,
                 model=body.model,
-                variants=_to_domain_variants(body.variants),
+                variants=variants,
+                initial_quantities=_to_seed_quantities(body.variants, variants),
             )
 
     product = await _execute_or_raise(_create())
