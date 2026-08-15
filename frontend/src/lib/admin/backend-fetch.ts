@@ -53,10 +53,16 @@ export async function adminBackendFetch(
   }
 
   const hasBody = init?.body !== undefined;
+  const isFormData = init?.body instanceof FormData;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${session.access_token}`,
   };
-  if (hasBody) {
+  // FormData (multipart uploads) must NOT get a manual `Content-Type`:
+  // the browser/undici sets it (with the required `boundary=` param)
+  // only when `Content-Type` is absent from `headers` — a hand-set
+  // header without `boundary=` breaks FastAPI's multipart parser
+  // (design.md Decision 8).
+  if (hasBody && !isFormData) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -71,7 +77,15 @@ export async function adminBackendFetch(
       // and `JSON.stringify` on a string value is lossless — never a
       // `parseFloat`/`Number()` round-trip (design.md's money-precision
       // threat-matrix item).
-      body: hasBody ? JSON.stringify(init.body) : undefined,
+      //
+      // A `FormData` body (multipart upload) is passed straight through
+      // — `JSON.stringify`-ing it would silently produce the string
+      // `"[object FormData]"` and corrupt the upload.
+      body: isFormData
+        ? (init.body as FormData)
+        : hasBody
+          ? JSON.stringify(init.body)
+          : undefined,
       cache: "no-store",
     });
   } catch {

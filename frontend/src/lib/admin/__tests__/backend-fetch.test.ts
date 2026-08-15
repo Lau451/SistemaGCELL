@@ -130,6 +130,73 @@ describe("adminBackendFetch", () => {
     expect(result).toEqual({ outcome: "response", status: 204, body: null });
   });
 
+  it("relays a FormData body directly — no JSON.stringify, no Content-Type header (design.md Decision 8)", async () => {
+    GET_CLAIMS.mockResolvedValue({
+      data: { claims: { sub: "admin-1" } },
+      error: null,
+    });
+    GET_SESSION.mockResolvedValue({
+      data: { session: { access_token: "real-jwt-token" } },
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      status: 201,
+      json: () => Promise.resolve({ id: "img1" }),
+    } as Response);
+
+    const formData = new FormData();
+    formData.set("file", new File(["binary"], "photo.webp"));
+
+    const adminBackendFetch = await importBackendFetch();
+    await adminBackendFetch("/admin/products/p1/images", {
+      method: "POST",
+      body: formData,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, requestInit] = fetchSpy.mock.calls[0];
+    const init = requestInit as RequestInit;
+
+    // The exact same FormData instance must reach `fetch` — never
+    // `JSON.stringify`'d (which would silently produce `"[object
+    // FormData]"` and corrupt the multipart upload).
+    expect(init.body).toBe(formData);
+
+    // Setting a manual `Content-Type` here would omit the `boundary=`
+    // parameter FastAPI's multipart parser requires (design.md Decision
+    // 8) — the browser/undici must set it instead.
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer real-jwt-token");
+    expect(headers["Content-Type"]).toBeUndefined();
+  });
+
+  it("still JSON.stringifies and sets Content-Type for a plain object body (regression)", async () => {
+    GET_CLAIMS.mockResolvedValue({
+      data: { claims: { sub: "admin-1" } },
+      error: null,
+    });
+    GET_SESSION.mockResolvedValue({
+      data: { session: { access_token: "real-jwt-token" } },
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      status: 200,
+      json: () => Promise.resolve({ id: "p1" }),
+    } as Response);
+
+    const adminBackendFetch = await importBackendFetch();
+    await adminBackendFetch("/admin/products/p1", {
+      method: "PATCH",
+      body: { name: "Funda iPhone 15" },
+    });
+
+    const [, requestInit] = fetchSpy.mock.calls[0];
+    const init = requestInit as RequestInit;
+    expect(init.body).toBe(JSON.stringify({ name: "Funda iPhone 15" }));
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer real-jwt-token",
+      "Content-Type": "application/json",
+    });
+  });
+
   it("returns backend_unavailable when the upstream fetch throws", async () => {
     GET_CLAIMS.mockResolvedValue({
       data: { claims: { sub: "admin-1" } },

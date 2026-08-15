@@ -58,10 +58,10 @@ Chain strategy: stacked-to-main
 - [x] 5.3 GREEN: add `GET/POST/DELETE/PUT` image routes to `api/admin.py` calling the 4 use cases; extend `_execute_or_raise` with 502 `ObjectStorageError`
 
 ## Phase 6: Relay + Server Actions (PR6, ~330)
-- [ ] 6.1 RED: `adminBackendFetch` with `FormData` sets no `Content-Type`, skips `JSON.stringify`; existing JSON callers' request shape unchanged (spec: admin-product-images)
-- [ ] 6.2 GREEN: `FormData` branch in `frontend/src/lib/admin/backend-fetch.ts`
-- [ ] 6.3 RED: Server Action relays `File` without buffering
-- [ ] 6.4 GREEN: upload/delete/reorder Server Actions in `frontend/src/app/(admin)/admin/products/actions.ts`
+- [x] 6.1 RED: `adminBackendFetch` with `FormData` sets no `Content-Type`, skips `JSON.stringify`; existing JSON callers' request shape unchanged (spec: admin-product-images)
+- [x] 6.2 GREEN: `FormData` branch in `frontend/src/lib/admin/backend-fetch.ts`
+- [x] 6.3 RED: Server Action relays `File` without buffering
+- [x] 6.4 GREEN: upload/delete/reorder Server Actions in `frontend/src/app/(admin)/admin/products/actions.ts`
 
 ## Phase 7: Image Manager UI (PR7, ~370)
 - [ ] 7.1 GREEN: `frontend/src/app/(admin)/admin/products/image-manager.tsx` — file input, hero/variant assignment, thumbnails, delete, reorder, actionable validation-error display (spec: "Validation Failures Surface Actionable Feedback")

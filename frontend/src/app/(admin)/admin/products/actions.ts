@@ -41,6 +41,13 @@ export interface ProductFormState {
   error: string | null;
 }
 
+// Images render on the product detail page (`[id]/page.tsx`), not the
+// list page — revalidating `ADMIN_PRODUCTS_PATH` alone would leave a
+// stale gallery after an upload/delete/reorder.
+function adminProductDetailPath(productId: string): string {
+  return `${ADMIN_PRODUCTS_PATH}/${productId}`;
+}
+
 interface VariantWritePayload {
   id?: string;
   color: string;
@@ -135,6 +142,112 @@ export async function retireProductAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath(ADMIN_PRODUCTS_PATH);
+}
+
+/**
+ * Upload a product image — the multipart write path from design.md's
+ * Data Flow diagram. The incoming `file` (a `File`, never buffered
+ * through `.arrayBuffer()`/`.text()`) is relayed straight into a new
+ * `FormData` passed as `adminBackendFetch`'s `body`, which — per Decision
+ * 8 — forwards `FormData` to `fetch` untouched with no `Content-Type`
+ * header, letting the browser set the multipart boundary.
+ *
+ * Optional `variant-id`/`alt-text` incoming fields (kebab-case, matching
+ * this file's other form-field conventions) are relayed as the backend's
+ * `variant_id`/`alt_text` `Form(...)` fields.
+ */
+export async function uploadProductImageAction(
+  productId: string,
+  _prevState: ProductFormState,
+  formData: FormData,
+): Promise<ProductFormState> {
+  const file = formData.get("file");
+  const relay = new FormData();
+  if (file instanceof File) {
+    relay.set("file", file);
+  }
+
+  const variantId = formData.get("variant-id");
+  if (typeof variantId === "string" && variantId.trim() !== "") {
+    relay.set("variant_id", variantId);
+  }
+
+  const altText = formData.get("alt-text");
+  if (typeof altText === "string" && altText.trim() !== "") {
+    relay.set("alt_text", altText);
+  }
+
+  const result = await adminBackendFetch(
+    `/admin/products/${productId}/images`,
+    { method: "POST", body: relay },
+  );
+
+  if (result.outcome === "unauthenticated") {
+    redirect(ADMIN_LOGIN_PATH);
+  }
+
+  if (result.outcome === "backend_unavailable") {
+    return { error: BACKEND_UNAVAILABLE_MESSAGE };
+  }
+
+  if (result.status === 201) {
+    revalidatePath(adminProductDetailPath(productId));
+    return { error: null };
+  }
+
+  return { error: extractAdminError(result.status, result.body) };
+}
+
+/**
+ * Delete a product image — same fire-and-forget pattern as
+ * `retireVariantAction`: no error state, just gate + relay + revalidate.
+ */
+export async function deleteProductImageAction(
+  formData: FormData,
+): Promise<void> {
+  const productId = String(formData.get("product-id") ?? "");
+  const imageId = String(formData.get("image-id") ?? "");
+  const result = await adminBackendFetch(
+    `/admin/products/${productId}/images/${imageId}`,
+    { method: "DELETE" },
+  );
+
+  if (result.outcome === "unauthenticated") {
+    redirect(ADMIN_LOGIN_PATH);
+  }
+
+  revalidatePath(adminProductDetailPath(productId));
+}
+
+/**
+ * Reorder a product's images — design.md Decision 6: the full ordered id
+ * list, not deltas. Called directly from the (Phase 7) drag-reorder UI
+ * rather than bound to a `<form>` submit, so it takes plain arguments
+ * instead of `(prevState, formData)`.
+ */
+export async function reorderProductImagesAction(
+  productId: string,
+  imageIds: string[],
+): Promise<ProductFormState> {
+  const result = await adminBackendFetch(
+    `/admin/products/${productId}/images/order`,
+    { method: "PUT", body: { image_ids: imageIds } },
+  );
+
+  if (result.outcome === "unauthenticated") {
+    redirect(ADMIN_LOGIN_PATH);
+  }
+
+  if (result.outcome === "backend_unavailable") {
+    return { error: BACKEND_UNAVAILABLE_MESSAGE };
+  }
+
+  if (result.status === 200) {
+    revalidatePath(adminProductDetailPath(productId));
+    return { error: null };
+  }
+
+  return { error: extractAdminError(result.status, result.body) };
 }
 
 export async function retireVariantAction(formData: FormData): Promise<void> {
