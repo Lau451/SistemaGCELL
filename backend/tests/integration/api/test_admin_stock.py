@@ -13,6 +13,7 @@ POSTs reflects the recorded movements' running sum (spec:
 admin-stock-management, admin-api-access).
 """
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -25,8 +26,12 @@ from gcell.products.domain.product import Product, ProductVariant
 from gcell.products.infrastructure.postgres_product_repository import (
     PostgresProductRepository,
 )
-from gcell.stock.domain.stock_movement import StockMovement
+from gcell.stock.application.stock_movement_history_reader import RecordedStockMovement
+from gcell.stock.domain.stock_movement import MovementType, StockMovement
 from gcell.stock.infrastructure.postgres_stock_level_reader import PostgresStockLevelReader
+from gcell.stock.infrastructure.postgres_stock_movement_history_reader import (
+    PostgresStockMovementHistoryReader,
+)
 from gcell.stock.infrastructure.postgres_stock_movement_repository import (
     PostgresStockMovementRepository,
 )
@@ -81,6 +86,11 @@ def _spy_all_adapters(monkeypatch, calls: list[str]) -> None:
     monkeypatch.setattr(
         PostgresStockMovementRepository, "record", _spy(calls, "movement_repo.record")
     )
+    monkeypatch.setattr(
+        PostgresStockMovementHistoryReader,
+        "list_for_variant",
+        _spy(calls, "history_reader.list_for_variant"),
+    )
 
 
 _STOCK_ROUTES = [
@@ -90,6 +100,12 @@ _STOCK_ROUTES = [
         lambda pid, vid: f"/admin/products/{pid}/variants/{vid}/stock/movements",
         {"movement_type": "restock", "quantity_delta": 5},
         id="post-movement",
+    ),
+    pytest.param(
+        "GET",
+        lambda pid, vid: f"/admin/products/{pid}/variants/{vid}/stock/movements",
+        None,
+        id="get-movement-history",
     ),
 ]
 
@@ -301,3 +317,173 @@ def test_post_then_get_readback_reflects_the_running_sum(monkeypatch) -> None:
     assert stock_response.json() == [
         {"variant_id": str(variant.id), "color": variant.color, "quantity_on_hand": 7}
     ]
+
+
+def make_recorded_movement(variant_id, movement_id: int) -> RecordedStockMovement:
+    return RecordedStockMovement(
+        id=movement_id,
+        variant_id=variant_id,
+        movement_type=MovementType.RESTOCK,
+        quantity_delta=1,
+        reason=None,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+def test_get_movement_history_for_foreign_variant_id_returns_404_never_403(monkeypatch) -> None:
+    product_a = make_product()
+    product_b = make_product()
+
+    async def fake_get_by_id(self, product_id):
+        return product_a if product_id == product_a.id else None
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product_a.id}/variants/{product_b.variants[0].id}"
+            "/stock/movements",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "not_found"}
+
+
+def test_get_movement_history_for_unknown_variant_id_returns_404(monkeypatch) -> None:
+    product = make_product()
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/variants/{uuid4()}/stock/movements",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "not_found"}
+
+
+def test_get_movement_history_for_variant_with_no_movements_returns_empty_page(
+    monkeypatch,
+) -> None:
+    variant = make_variant()
+    product = make_product(variants=[variant])
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    async def fake_list_for_variant(self, variant_id, limit, before_id):
+        return []
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresStockMovementHistoryReader, "list_for_variant", fake_list_for_variant
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/variants/{variant.id}/stock/movements",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "next_before_id": None}
+
+
+def test_get_movement_history_limit_above_cap_is_clamped_not_rejected(monkeypatch) -> None:
+    variant = make_variant()
+    product = make_product(variants=[variant])
+    captured_limits: list[int] = []
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    async def fake_list_for_variant(self, variant_id, limit, before_id):
+        captured_limits.append(limit)
+        return []
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresStockMovementHistoryReader, "list_for_variant", fake_list_for_variant
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/variants/{variant.id}/stock/movements?limit=500",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert captured_limits == [101]  # clamped to 100, then +1 trim request
+
+
+def test_get_movement_history_invalid_before_id_returns_422_not_500(monkeypatch) -> None:
+    variant = make_variant()
+    product = make_product(variants=[variant])
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/variants/{variant.id}/stock/movements"
+            "?before_id=abc",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 422
+
+
+def test_get_movement_history_second_page_items_are_strictly_older_than_first_page(
+    monkeypatch,
+) -> None:
+    variant = make_variant()
+    product = make_product(variants=[variant])
+    all_movements = [make_recorded_movement(variant.id, i) for i in range(1, 4)]  # ids 1, 2, 3
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    async def fake_list_for_variant(self, variant_id, limit, before_id):
+        rows = [m for m in all_movements if before_id is None or m.id < before_id]
+        rows.sort(key=lambda m: m.id, reverse=True)
+        return rows[:limit]
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresStockMovementHistoryReader, "list_for_variant", fake_list_for_variant
+    )
+    token = make_valid_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    base_path = f"/admin/products/{product.id}/variants/{variant.id}/stock/movements"
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        page_one = client.get(f"{base_path}?limit=2", headers=headers)
+        next_before_id = page_one.json()["next_before_id"]
+        page_two = client.get(f"{base_path}?limit=2&before_id={next_before_id}", headers=headers)
+
+    assert page_one.status_code == 200
+    assert page_two.status_code == 200
+    assert set(page_one.json().keys()) == {"items", "next_before_id"}
+    first_page_min_id = min(item["id"] for item in page_one.json()["items"])
+    second_page_ids = [item["id"] for item in page_two.json()["items"]]
+    assert second_page_ids
+    assert all(item_id < first_page_min_id for item_id in second_page_ids)

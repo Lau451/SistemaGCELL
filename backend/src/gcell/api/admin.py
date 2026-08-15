@@ -24,6 +24,7 @@ for every rejected body; no `400`".
 """
 
 from collections.abc import Awaitable
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -69,12 +70,20 @@ from gcell.shared.infrastructure.dependencies import (
 from gcell.shared.infrastructure.pillow_image_normalizer import PillowImageNormalizer
 from gcell.shared.infrastructure.supabase_storage import SupabaseStorage
 from gcell.stock.application.exceptions import UnknownVariantError
+from gcell.stock.application.list_variant_stock_movements import (
+    ListVariantStockMovementsUseCase,
+    StockMovementPage,
+)
 from gcell.stock.application.record_stock_movement import RecordStockMovementUseCase
 from gcell.stock.application.record_variant_stock_movement import (
     RecordVariantStockMovementUseCase,
 )
+from gcell.stock.application.stock_movement_history_reader import RecordedStockMovement
 from gcell.stock.domain.stock_movement import StockMovement
 from gcell.stock.infrastructure.postgres_stock_level_reader import PostgresStockLevelReader
+from gcell.stock.infrastructure.postgres_stock_movement_history_reader import (
+    PostgresStockMovementHistoryReader,
+)
 from gcell.stock.infrastructure.postgres_stock_movement_repository import (
     PostgresStockMovementRepository,
 )
@@ -498,3 +507,62 @@ async def record_admin_variant_stock_movement(
 
     movement = await _execute_or_raise(_record())
     return AdminStockMovementResponse.from_domain(movement)
+
+
+class AdminStockMovementHistoryItemResponse(BaseModel):
+    id: int
+    variant_id: UUID
+    movement_type: str
+    quantity_delta: int
+    reason: str | None
+    created_at: datetime
+
+    @classmethod
+    def from_domain(
+        cls, movement: RecordedStockMovement
+    ) -> "AdminStockMovementHistoryItemResponse":
+        return cls(
+            id=movement.id,
+            variant_id=movement.variant_id,
+            movement_type=str(movement.movement_type),
+            quantity_delta=movement.quantity_delta,
+            reason=movement.reason,
+            created_at=movement.created_at,
+        )
+
+
+class AdminStockMovementHistoryPageResponse(BaseModel):
+    items: list[AdminStockMovementHistoryItemResponse]
+    next_before_id: int | None
+
+    @classmethod
+    def from_domain(cls, page: StockMovementPage) -> "AdminStockMovementHistoryPageResponse":
+        return cls(
+            items=[AdminStockMovementHistoryItemResponse.from_domain(item) for item in page.items],
+            next_before_id=page.next_before_id,
+        )
+
+
+@router.get("/products/{product_id}/variants/{variant_id}/stock/movements")
+async def get_admin_variant_stock_movement_history(
+    product_id: UUID,
+    variant_id: UUID,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+    limit: int = 20,
+    before_id: int | None = None,
+) -> AdminStockMovementHistoryPageResponse:
+    async def _list() -> StockMovementPage:
+        async with pool.acquire() as conn:
+            use_case = ListVariantStockMovementsUseCase(
+                products=PostgresProductRepository(conn),
+                history_reader=PostgresStockMovementHistoryReader(conn),
+            )
+            return await use_case.execute(
+                product_id=product_id,
+                variant_id=variant_id,
+                limit=limit,
+                before_id=before_id,
+            )
+
+    page = await _execute_or_raise(_list())
+    return AdminStockMovementHistoryPageResponse.from_domain(page)

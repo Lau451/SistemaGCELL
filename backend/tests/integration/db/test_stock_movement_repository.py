@@ -23,6 +23,9 @@ from gcell.stock.domain.stock_movement import MovementType, StockMovement
 from gcell.stock.infrastructure.postgres_stock_level_reader import (
     PostgresStockLevelReader,
 )
+from gcell.stock.infrastructure.postgres_stock_movement_history_reader import (
+    PostgresStockMovementHistoryReader,
+)
 from gcell.stock.infrastructure.postgres_stock_movement_repository import (
     PostgresStockMovementRepository,
 )
@@ -141,3 +144,68 @@ async def test_direct_update_against_stock_movements_is_rejected_by_trigger(
             "UPDATE stock_movements SET quantity_delta = 99 WHERE variant_id = $1",
             variant_id,
         )
+
+
+async def test_list_for_variant_returns_rows_newest_first(db_conn) -> None:
+    variant_id = await make_persisted_variant_id(db_conn)
+    repository = PostgresStockMovementRepository(db_conn)
+    reader = PostgresStockMovementHistoryReader(db_conn)
+    for delta in (10, -3, 2):
+        await repository.record(
+            StockMovement(
+                variant_id=variant_id, movement_type=MovementType.ADJUSTMENT, quantity_delta=delta
+            )
+        )
+
+    rows = await reader.list_for_variant(variant_id, limit=10, before_id=None)
+
+    assert [row.quantity_delta for row in rows] == [2, -3, 10]
+    assert rows[0].id > rows[1].id > rows[2].id
+
+
+async def test_list_for_variant_paginates_with_strictly_exclusive_before_id_cursor(
+    db_conn,
+) -> None:
+    variant_id = await make_persisted_variant_id(db_conn)
+    repository = PostgresStockMovementRepository(db_conn)
+    reader = PostgresStockMovementHistoryReader(db_conn)
+    for _ in range(5):
+        await repository.record(
+            StockMovement(
+                variant_id=variant_id, movement_type=MovementType.ADJUSTMENT, quantity_delta=1
+            )
+        )
+
+    page_one = await reader.list_for_variant(variant_id, limit=2, before_id=None)
+    page_two = await reader.list_for_variant(
+        variant_id, limit=2, before_id=page_one[-1].id
+    )
+
+    page_one_ids = {row.id for row in page_one}
+    page_two_ids = {row.id for row in page_two}
+    assert len(page_one) == 2
+    assert len(page_two) == 2
+    assert page_one_ids.isdisjoint(page_two_ids)  # no duplicates
+    assert max(page_two_ids) < min(page_one_ids)  # strictly older, no gaps skipped
+
+
+async def test_list_for_variant_never_returns_another_variants_movements(db_conn) -> None:
+    variant_a_id = await make_persisted_variant_id(db_conn)
+    variant_b_id = await make_persisted_variant_id(db_conn)
+    repository = PostgresStockMovementRepository(db_conn)
+    reader = PostgresStockMovementHistoryReader(db_conn)
+    await repository.record(
+        StockMovement(
+            variant_id=variant_a_id, movement_type=MovementType.RESTOCK, quantity_delta=10
+        )
+    )
+    await repository.record(
+        StockMovement(
+            variant_id=variant_b_id, movement_type=MovementType.RESTOCK, quantity_delta=20
+        )
+    )
+
+    rows = await reader.list_for_variant(variant_a_id, limit=10, before_id=None)
+
+    assert len(rows) == 1
+    assert rows[0].variant_id == variant_a_id
