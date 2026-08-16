@@ -22,6 +22,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <Link href="/admin/products" className="text-sm">
               Products
             </Link>
+            <Link href="/admin/stock" className="text-sm">
+              Stock
+            </Link>
             <form action={signOutAction}>
               <button type="submit" className="text-sm">
                 Sign out

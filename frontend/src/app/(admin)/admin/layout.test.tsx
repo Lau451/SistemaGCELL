@@ -44,6 +44,16 @@ describe("AdminLayout", () => {
     );
   });
 
+  it("links to the stock triage page", async () => {
+    const AdminLayout = await importLayout();
+    render(<AdminLayout>{<p>Landing content</p>}</AdminLayout>);
+
+    expect(screen.getByRole("link", { name: /stock/i })).toHaveAttribute(
+      "href",
+      "/admin/stock",
+    );
+  });
+
   it("invokes signOutAction when the sign-out control is submitted", async () => {
     SIGN_OUT_ACTION.mockResolvedValue(undefined);
     const user = userEvent.setup();
