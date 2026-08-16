@@ -49,21 +49,21 @@ either unit.
 
 ## Phase 3: Frontend — Proxy (Decision 5)
 
-- [ ] 3.1 RED `frontend/src/app/api/admin/stock/__tests__/route.test.ts` (new) — unauthenticated → `401` before any `fetch`; backend unavailable → `502`; `below`/`search` forwarded into a freshly rebuilt `URLSearchParams`; an injected extra param (e.g. `?below=1&limit=999`) is dropped, never reaches the backend URL (threat matrix: param smuggling through the proxy); `Cache-Control: private, no-store` header present
-- [ ] 3.2 GREEN `frontend/src/app/api/admin/stock/route.ts` (new) — `GET(request)`, no `RouteContext` (no dynamic segment); `ALLOWED_QUERY_PARAMS = ["below", "search"]`, allowlist rebuild mirroring the movements proxy idiom, never `url.search` verbatim; `adminBackendFetch("/admin/stock" + query)`
+- [x] 3.1 RED `frontend/src/app/api/admin/stock/__tests__/route.test.ts` (new) — unauthenticated → `401` before any `fetch`; backend unavailable → `502`; `below`/`search` forwarded into a freshly rebuilt `URLSearchParams`; an injected extra param (e.g. `?below=1&limit=999`) is dropped, never reaches the backend URL (threat matrix: param smuggling through the proxy); `Cache-Control: private, no-store` header present
+- [x] 3.2 GREEN `frontend/src/app/api/admin/stock/route.ts` (new) — `GET(request)`, no `RouteContext` (no dynamic segment); `ALLOWED_QUERY_PARAMS = ["below", "search"]`, allowlist rebuild mirroring the movements proxy idiom, never `url.search` verbatim; `adminBackendFetch("/admin/stock" + query)`
 
 ## Phase 4: Frontend — Page (D12, D13, Decisions 6-7)
 
-- [ ] 4.1 RED `frontend/src/app/(admin)/admin/stock/page.test.tsx` (new) — one row rendered per variant; a `0`-quantity row carries `text-destructive` + "Out of stock" (spec: "Zero-Stock Variants Are Visually Distinguished" — triage surface); each row links to `/admin/products/{product_id}` (D13); fetch failure renders `Unable to load stock.`; zero rows with an active filter (`search`/`below` normalized) renders `No variants match your search or filter.`; zero rows with no active filter renders `No variants in the catalog yet.` — both strings distinct (D12); array-valued `?search=a&search=b` collapses to `"a"` (Decision 7)
-- [ ] 4.2 GREEN `frontend/src/app/(admin)/admin/stock/page.tsx` (new) — `await searchParams`, `Array.isArray(v) ? v[0] : v` collapse, forward as strings to the proxy (Decision 7); render table with search input + `below` input, row `<Link href={`/admin/products/${row.product_id}`}>`, filter-active detection reusing backend normalization (`search.trim() !== ""`, `below` parses to a number) to pick the empty-state copy (Decision 6)
+- [x] 4.1 RED `frontend/src/app/(admin)/admin/stock/page.test.tsx` (new) — one row rendered per variant; a `0`-quantity row carries `text-destructive` + "Out of stock" (spec: "Zero-Stock Variants Are Visually Distinguished" — triage surface); each row links to `/admin/products/{product_id}` (D13); fetch failure renders `Unable to load stock.`; zero rows with an active filter (`search`/`below` normalized) renders `No variants match your search or filter.`; zero rows with no active filter renders `No variants in the catalog yet.` — both strings distinct (D12); array-valued `?search=a&search=b` collapses to `"a"` (Decision 7)
+- [x] 4.2 GREEN `frontend/src/app/(admin)/admin/stock/page.tsx` (new) — `await searchParams`, `Array.isArray(v) ? v[0] : v` collapse, forward as strings to the proxy (Decision 7); render table with search input + `below` input, row `<Link href={`/admin/products/${row.product_id}`}>`, filter-active detection reusing backend normalization (`search.trim() !== ""`, `below` parses to a number) to pick the empty-state copy (Decision 6)
 
 ## Phase 5: Frontend — Nav link
 
-- [ ] 5.1 RED extend `frontend/src/app/(admin)/admin/layout.test.tsx` — a "Stock" link is present with `href="/admin/stock"`
-- [ ] 5.2 GREEN `frontend/src/app/(admin)/admin/layout.tsx` — add `<Link href="/admin/stock">Stock</Link>` beside the existing "Products" link
+- [x] 5.1 RED extend `frontend/src/app/(admin)/admin/layout.test.tsx` — a "Stock" link is present with `href="/admin/stock"`
+- [x] 5.2 GREEN `frontend/src/app/(admin)/admin/layout.tsx` — add `<Link href="/admin/stock">Stock</Link>` beside the existing "Products" link
 
 ## Phase 6: Verification
 
-- [ ] 6.1 `cd backend && uv run pytest -v` — full suite, confirm `test_admin.py` (list_admin_products), `test_admin_stock.py`'s existing per-product routes, and `test_domain_boundary.py` pass unmodified
-- [ ] 6.2 `cd frontend && npm test` — full suite, confirm `admin/products/page.test.tsx`, movements route/proxy tests, and `layout.test.tsx`'s existing assertions pass unmodified
-- [ ] 6.3 Confirm zero diff under `supabase/migrations/`, `stock/infrastructure/**`, `products/**`; `stock → products` import direction unchanged (D7, convention only — not CI-enforced)
+- [x] 6.1 `cd backend && uv run pytest -v` — full suite, confirm `test_admin.py` (list_admin_products), `test_admin_stock.py`'s existing per-product routes, and `test_domain_boundary.py` pass unmodified
+- [x] 6.2 `cd frontend && npm test` — full suite, confirm `admin/products/page.test.tsx`, movements route/proxy tests, and `layout.test.tsx`'s existing assertions pass unmodified
+- [x] 6.3 Confirm zero diff under `supabase/migrations/`, `stock/infrastructure/**`, `products/**`; `stock → products` import direction unchanged (D7, convention only — not CI-enforced)

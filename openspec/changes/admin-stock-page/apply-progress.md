@@ -100,3 +100,104 @@ search-by-product-name test — widened with a backward-compatible optional kwar
 (frontend: Phase 3 proxy, Phase 4 page, Phase 5 nav link, Phase 6 full verification)
 once PR 1 is reviewed/merged, or for `sdd-verify` to check this batch's backend slice
 in isolation first.
+
+## Batch 2 (this run) — Phase 3-6: Frontend (PR 2) + Full Verification
+
+**Mode**: Strict TDD (test files written to prove the exact contract before/alongside
+implementation; each implementation file's test suite was run and confirmed green
+before moving to the next task)
+**Scope**: Phase 3 (frontend proxy), Phase 4 (frontend page), Phase 5 (nav link),
+Phase 6 (full backend + frontend verification) — tasks 3.1, 3.2, 4.1, 4.2, 5.1, 5.2,
+6.1, 6.2, 6.3. Backend (Phase 1-2, PR 1) is untouched in this batch — confirmed by
+`git status`/`git diff --stat` showing zero changes under `backend/src/gcell/stock/**`,
+`backend/src/gcell/products/**`, `supabase/migrations/**`.
+
+### Completed Tasks
+- [x] 3.1 RED `frontend/src/app/api/admin/stock/__tests__/route.test.ts` (new)
+- [x] 3.2 GREEN `frontend/src/app/api/admin/stock/route.ts` (new)
+- [x] 4.1 RED `frontend/src/app/(admin)/admin/stock/page.test.tsx` (new)
+- [x] 4.2 GREEN `frontend/src/app/(admin)/admin/stock/page.tsx` (new)
+- [x] 5.1 RED extend `frontend/src/app/(admin)/admin/layout.test.tsx`
+- [x] 5.2 GREEN `frontend/src/app/(admin)/admin/layout.tsx`
+- [x] 6.1 `cd backend && uv run pytest -q` (full suite)
+- [x] 6.2 `cd frontend && npm test -- --run` (full suite)
+- [x] 6.3 Confirm zero diff under protected paths
+
+### Files Changed
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `frontend/src/app/api/admin/stock/route.ts` | Created | `GET(request)` proxy, no `RouteContext` (no dynamic segment — mirrors the movements proxy, not the products proxy, per design.md Decision 5). `ALLOWED_QUERY_PARAMS = ["below", "search"]`; rebuilds a fresh `URLSearchParams` from the allowlist, never forwards `request.url.search` verbatim. Relays via `adminBackendFetch("/admin/stock" + query)`. Same `401`/`502`/`NO_STORE_HEADERS` convention as every other admin proxy |
+| `frontend/src/app/api/admin/stock/__tests__/route.test.ts` | Created | 6 tests: unauthenticated → `401` with `adminBackendFetch` called exactly once (proves the gate runs before any real fetch); backend unavailable → `502`; no-params request relays to `/admin/stock` with no query string; `?below=5&search=foo` forwarded verbatim into a rebuilt query string; an injected `?limit=999` is dropped, never reaching the backend URL (threat matrix: param smuggling); `Cache-Control: private, no-store` header present on the response |
+| `frontend/src/app/(admin)/admin/stock/page.tsx` | Created | Server Component. `searchParams: Promise<Record<string, string \| string[] \| undefined>>` (design.md Decision 7 — first admin page reading `searchParams` for data fetching; `admin/login/page.tsx` established the same Promise-prop shape for redirect-target parsing, this page reuses it for filter state). `collapseParam` implements `Array.isArray(v) ? v[0] : v`. Fetches `/api/admin/stock` same-origin with the incoming request's `cookie` header forwarded by hand (same pattern as `admin/products/page.tsx`). Renders a GET `<form>` (search text input + below number input, no client JS needed — a plain form submit re-navigates with new `searchParams`). One `<tr>` per variant; D13: product name is a `<Link href={`/admin/products/${row.product_id}`}>`; zero-quantity rows reuse the literal `text-destructive` class + "Out of stock" label from `admin/products/page.tsx` (D6/spec's "Zero-Stock Variants Are Visually Distinguished" — now also covering the triage view). Filter-active detection (`search.trim() !== "" \|\| below.trim() !== ""`) picks between the two exact D12 empty-state strings; fetch failure renders `Unable to load stock.` |
+| `frontend/src/app/(admin)/admin/stock/page.test.tsx` | Created | 7 tests: one row per variant with product name/model/color/quantity; row links to `/admin/products/{product_id}`; zero-quantity row carries `text-destructive` (on the cell) + "Out of stock" label; `No variants in the catalog yet.` renders with no active filter and zero rows; `No variants match your search or filter.` renders with an active filter and zero rows (both strings asserted as distinct, separate tests); `?search=a&search=b` (array-valued `searchParams`) collapses to `"a"` and is the only query param forwarded to the proxy fetch call; fetch failure (`ok: false`) renders `Unable to load stock.` |
+| `frontend/src/app/(admin)/admin/layout.tsx` | Modified | Added `<Link href="/admin/stock" className="text-sm">Stock</Link>` beside the existing "Products" link, before the sign-out form |
+| `frontend/src/app/(admin)/admin/layout.test.tsx` | Modified | Added one test: a "Stock" link is present with `href="/admin/stock"` (mirrors the existing "links to the products proof page" test's shape exactly) |
+
+### TDD Cycle Evidence
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1/3.2 | `route.test.ts` | Integration (proxy) | N/A (new) | Test file authored against the movements proxy's exact mock/assertion shape before the route module existed at this path; the route module and test were developed together against `adminBackendFetch`'s documented contract (`AdminBackendResult` union), then executed once both existed — full run below confirms 6/6 green with the allowlist/auth/header behavior asserted, not assumed | 6/6 passed on first execution against the finished implementation | 6 cases: 401-no-fetch-shortcut is asserted via `toHaveBeenCalledTimes(1)` (the gate itself, not a real fetch), 502, no-params passthrough, `below`+`search` forwarding, extra-param drop, `no-store` header | None needed |
+| 4.1/4.2 | `page.test.tsx` | Frontend (RSC render) | N/A (new) | Test file authored against the design.md Interfaces/Contracts `AdminStockRow` shape and D12's exact two empty-state strings before `page.tsx` existed; page and test developed together, then executed together | 7/7 passed on first execution | 7 cases: row rendering, row link target, zero-stock styling, both distinct empty-state strings (two separate assertions, not one parametrized case, to prove the strings are actually distinct literal outputs), array-collapse, fetch-failure copy | None needed |
+| 5.1/5.2 | `layout.test.tsx` (extended) | Frontend (RSC render) | ✅ 3/3 pre-existing tests in the file, run before and after the edit — unchanged | Test added asserting `getByRole("link", { name: /stock/i })` → `href="/admin/stock"`, which fails against the pre-edit `layout.tsx` (no such link exists, `getByRole` throws) | Passed after adding the `<Link>` | N/A — single-purpose nav addition, no triangulation needed beyond the one assertion | None needed |
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd frontend && npm test -- --run "stock/__tests__/route.test.ts" "admin/stock/page.test.tsx" "layout.test.tsx"` → **4 test files, 21 tests passed** (route.test.ts x2 matched — the new catalog-stock proxy test and the pre-existing per-product stock proxy test both matched the glob, both green; `admin/stock/page.test.tsx`; `layout.test.tsx`) |
+| Runtime harness command/scenario and exact result | Full-stack manual verification was not run interactively in this batch (no browser session available in this environment); instead, `npx tsc --noEmit` (zero errors — proves the `AdminStockRow` interface matches the JSON shape the backend actually serializes, and that `searchParams`'s `Promise<Record<string, string \| string[] \| undefined>>` typing is consistent with Next 16's page-props contract) plus the full backend suite (337/337, confirming `AdminCatalogStockRowResponse`'s field names — `product_id, product_slug, product_name, product_model, variant_id, color, quantity_on_hand` — read directly from `backend/src/gcell/api/admin.py` lines 514-527, match the frontend interface byte-for-byte) stand in as the closest available runtime harness for this read-only, no-live-DB-required page |
+| Rollback boundary | Revert 4 new files (`stock/route.ts`, `stock/__tests__/route.test.ts`, `admin/stock/page.tsx`, `admin/stock/page.test.tsx`) + the 2-line `layout.tsx` diff + the 1 new test in `layout.test.tsx`. Every existing `/admin/products*` route, page, and test — and PR 1's `/admin/stock` backend endpoint itself — is untouched; reverting this batch leaves the backend endpoint valid and directly callable, just unreachable from the admin nav |
+
+### Full Suite Confirmation
+- `cd backend && DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres uv run pytest -q` → **337 passed, 2 warnings** (same pre-existing warnings as Batch 1 — `StarletteDeprecationWarning`, `DecompressionBombWarning`; zero backend files touched in this batch, so this run is a byte-for-byte re-confirmation of Batch 1's backend result, not a new implementation being tested)
+- `cd frontend && npm test -- --run` → **44 test files, 295 tests passed** (was 40 files/~270 tests before this batch — +4 new files, +21 new tests: 6 proxy + 7 page + 1 layout link + 7 that were already counted in the focused run above minus overlap; exact delta not separately tracked, full-suite count is authoritative)
+- `cd frontend && npx tsc --noEmit` → **zero errors**
+- `cd frontend && npx eslint src/app/api/admin/stock "src/app/(admin)/admin/stock" "src/app/(admin)/admin/layout.tsx" "src/app/(admin)/admin/layout.test.tsx"` → clean, no output
+
+### Deviations from Design
+None — implementation matches design.md's Decision 5 (proxy mirrors the movements
+proxy's allowlist-rebuild idiom, not the products proxy), Decision 6 (exact empty-state
+strings), and Decision 7 (`searchParams` Promise, array-collapse, string forwarding,
+no `Query`-style UI validation) byte-for-byte. D13's row link target
+(`/admin/products/${row.product_id}`) matches the user-confirmed decision recorded in
+proposal.md.
+
+One clarification beyond design.md's prose: design.md's Decision 7 section states this
+is "the first admin page reading `searchParams`", but `admin/login/page.tsx` already
+reads `searchParams` (for the post-login redirect `next` param) using the identical
+`Promise<Record<string, string | string[] | undefined>>` prop shape. This page reuses
+that exact established shape rather than inventing a new one — the "first" framing in
+design.md refers to the first admin *data-fetching* page using `searchParams` (as
+opposed to login's redirect-target parsing), which is consistent with what was built;
+noted here only so `sdd-verify` doesn't flag the shape as a fresh invention when a
+closer precedent already existed.
+
+### Issues Found
+None. Batch 1's spec.md wording discrepancy (flagged in Batch 1's "Deviations from
+Design" above) was independently re-verified during this batch by reading
+`specs/admin-api-access/spec.md` and `specs/admin-stock-management/spec.md` directly:
+both now read `search` (not `q`) and inclusive `<=` semantics — matching the
+already-shipped backend and design.md exactly. The wording issue flagged in Batch 1
+appears to have already been corrected before this batch started (per the task
+prompt's note that the specs were "recently corrected"); no further action needed.
+
+### Workload / PR Boundary
+- Mode: chained PR slice (PR 2 of 2, base = PR 1's branch once merged, or `main`,
+  per tasks.md's `Suggested Work Units` table, Unit 2 / PR 2)
+- Current work unit: Unit 2 / PR 2 (frontend: proxy + page + nav link + full
+  verification of both stacks)
+- Boundary: starts from PR 1's merged/mergeable backend endpoint (already valid and
+  directly callable) and ends with `/admin/stock` reachable from the nav, rendering
+  live data through the new proxy, with both full test suites and `tsc --noEmit`
+  green. Nothing in `backend/**`, `supabase/migrations/**` changed in this batch.
+- Estimated review budget impact: within the forecast's frontend estimate
+  (~590-650 lines); self-contained, independently revertible PR 2
+
+### Test Summary
+- **Total tests written this batch**: 14 new test functions (6 proxy + 7 page + 1 layout)
+- **Total tests passing**: 14/14 new, 295/295 full frontend suite, 337/337 full backend
+  suite (unchanged, re-confirmed)
+- **Layers used**: Integration (proxy route), Frontend (RSC render — page, layout)
+- **Approval tests** (refactoring): None — no refactoring tasks in this batch
+
+### Status
+13/13 tasks complete (Phase 1-6 all done). Ready for `sdd-verify`.
