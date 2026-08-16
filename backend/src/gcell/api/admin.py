@@ -71,6 +71,10 @@ from gcell.shared.infrastructure.postgres import transaction
 from gcell.shared.infrastructure.supabase_storage import SupabaseStorage
 from gcell.stock.application.create_stocked_product import CreateStockedProductUseCase
 from gcell.stock.application.exceptions import UnknownVariantError
+from gcell.stock.application.list_catalog_stock_levels import (
+    CatalogStockRow,
+    ListCatalogStockLevelsUseCase,
+)
 from gcell.stock.application.list_variant_stock_movements import (
     ListVariantStockMovementsUseCase,
     StockMovementPage,
@@ -505,6 +509,56 @@ async def reorder_admin_product_images(
 # directly, matching every other write route's rule. Neither route depends
 # on `require_storage` -- this change touches no Storage.
 # ---------------------------------------------------------------------------
+
+
+class AdminCatalogStockRowResponse(BaseModel):
+    # Standalone, list-only response model for `GET /admin/stock` -- NEVER a
+    # subclass of `AdminVariantStockResponse` or any `AdminProductList*`
+    # model (design.md Decision 3 / admin-stock-page D4): Pydantic
+    # serializes by declared field type, so a subclass would silently drop
+    # these extra product-context keys wherever the parent type is the
+    # annotation.
+    product_id: UUID
+    product_slug: str
+    product_name: str
+    product_model: str
+    variant_id: UUID
+    color: str
+    quantity_on_hand: int
+
+    @classmethod
+    def from_domain(cls, row: CatalogStockRow) -> "AdminCatalogStockRowResponse":
+        return cls(
+            product_id=row.product_id,
+            product_slug=row.product_slug,
+            product_name=row.product_name,
+            product_model=row.product_model,
+            variant_id=row.variant_id,
+            color=row.color,
+            quantity_on_hand=row.quantity_on_hand,
+        )
+
+
+@router.get("/stock")
+async def list_admin_catalog_stock(
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+    below: int | None = None,
+    search: str | None = None,
+) -> list[AdminCatalogStockRowResponse]:
+    # The use case itself calls `list_all()` then `quantities_for_variants()`
+    # -- design.md's Interfaces/Contracts -- so both adapters, bound to the
+    # SAME `conn`, are constructed and handed to it inside ONE
+    # `pool.acquire()`, byte-for-byte the `list_admin_products` bulk-read
+    # composition (design.md "Technical Approach"). D6: no
+    # `_execute_or_raise` here -- a bulk-read failure propagates naturally
+    # to FastAPI's default 500, same rule as `list_admin_products`.
+    async with pool.acquire() as conn:
+        use_case = ListCatalogStockLevelsUseCase(
+            products=PostgresProductRepository(conn),
+            stock_levels=PostgresStockLevelReader(conn),
+        )
+        rows = await use_case.execute(below=below, search=search)
+    return [AdminCatalogStockRowResponse.from_domain(row) for row in rows]
 
 
 class AdminVariantStockResponse(BaseModel):

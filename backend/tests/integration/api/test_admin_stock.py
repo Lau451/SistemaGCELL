@@ -11,12 +11,22 @@ an unknown `movement_type`, a zero delta, or a blank `reason`, all with zero
 `reason` is optional for every movement type, and that a GET after two
 POSTs reflects the recorded movements' running sum (spec:
 admin-stock-management, admin-api-access).
+
+The `GET /admin/stock` tests below (catalog-wide triage list) additionally
+prove: auth gates before any repository/reader call; the response carries
+product name/slug/model per variant row; `quantities_for_variants` is
+called exactly once regardless of product/variant count (no N+1, design.md
+"one bulk stock query"); `?below`/`?search` reach the use case and affect
+the response; omitting both returns every variant; and a bulk-read failure
+propagates to a framework-default `500` with no `_execute_or_raise`
+involvement (D6).
 """
 
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
+import asyncpg
 import pytest
 from admin_jwt_integration_support import make_valid_admin_token
 from fastapi.testclient import TestClient
@@ -59,12 +69,14 @@ def make_variant(color: str = "Negro") -> ProductVariant:
     )
 
 
-def make_product(*, variants: list[ProductVariant] | None = None) -> Product:
+def make_product(
+    *, name: str = "Funda iPhone 15", variants: list[ProductVariant] | None = None
+) -> Product:
     return Product(
         id=uuid4(),
         slug=f"funda-iphone-15-{uuid4().hex[:8]}",
-        name="Funda iPhone 15",
-        model="Funda iPhone 15",
+        name=name,
+        model=name,
         variants=variants if variants is not None else [make_variant()],
     )
 
@@ -487,3 +499,204 @@ def test_get_movement_history_second_page_items_are_strictly_older_than_first_pa
     second_page_ids = [item["id"] for item in page_two.json()["items"]]
     assert second_page_ids
     assert all(item_id < first_page_min_id for item_id in second_page_ids)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/stock -- catalog-wide triage list (design.md "Endpoints";
+# spec: admin-api-access "GET /admin/stock Endpoint", admin-stock-management
+# "Catalog-Wide Stock Triage Ordering, Threshold, And Search").
+# ---------------------------------------------------------------------------
+
+
+def test_no_token_on_list_stock_route_returns_401_and_never_calls_repository(
+    monkeypatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_list_all(self):
+        calls.append("product_repo.list_all")
+        return []
+
+    async def fake_quantities_for_variants(self, variant_ids):
+        calls.append("stock_reader.quantities_for_variants")
+        return {}
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/admin/stock")
+
+    assert response.status_code == 401
+    assert calls == []
+
+
+def test_list_stock_returns_rows_with_product_context(monkeypatch) -> None:
+    variant = make_variant("Negro")
+    product = make_product(variants=[variant])
+
+    async def fake_list_all(self):
+        return [product]
+
+    async def fake_quantities_for_variants(self, variant_ids):
+        return {variant_id: 3 for variant_id in variant_ids}
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get("/admin/stock", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "product_id": str(product.id),
+            "product_slug": product.slug,
+            "product_name": product.name,
+            "product_model": product.model,
+            "variant_id": str(variant.id),
+            "color": variant.color,
+            "quantity_on_hand": 3,
+        }
+    ]
+
+
+def test_list_stock_calls_bulk_stock_reader_exactly_once_regardless_of_variant_count(
+    monkeypatch,
+) -> None:
+    products = [
+        make_product(variants=[make_variant("Negro"), make_variant("Blanco")]) for _ in range(3)
+    ]
+
+    async def fake_list_all(self):
+        return products
+
+    calls: list[list] = []
+
+    async def spying_quantities_for_variants(self, variant_ids):
+        calls.append(list(variant_ids))
+        return {variant_id: 0 for variant_id in variant_ids}
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", spying_quantities_for_variants
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get("/admin/stock", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert len(calls[0]) == 6  # 3 products * 2 variants each
+    assert len(response.json()) == 6
+
+
+def test_list_stock_omitting_below_and_search_returns_every_variant(monkeypatch) -> None:
+    products = [
+        make_product(variants=[make_variant("Negro")]),
+        make_product(variants=[make_variant("Blanco")]),
+    ]
+
+    async def fake_list_all(self):
+        return products
+
+    async def fake_quantities_for_variants(self, variant_ids):
+        return {variant_id: 1 for variant_id in variant_ids}
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get("/admin/stock", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+
+def test_list_stock_below_query_param_narrows_the_response(monkeypatch) -> None:
+    variant_low = make_variant("Negro")
+    variant_high = make_variant("Blanco")
+    product = make_product(variants=[variant_low, variant_high])
+
+    async def fake_list_all(self):
+        return [product]
+
+    async def fake_quantities_for_variants(self, variant_ids):
+        return {variant_low.id: 0, variant_high.id: 10}
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            "/admin/stock?below=0", headers={"Authorization": f"Bearer {token}"}
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [row["variant_id"] for row in body] == [str(variant_low.id)]
+
+
+def test_list_stock_search_query_param_narrows_the_response(monkeypatch) -> None:
+    matching_product = make_product(name="Funda Silicona", variants=[make_variant("Negro")])
+    other_product = make_product(name="Cargador Rapido", variants=[make_variant("Blanco")])
+
+    async def fake_list_all(self):
+        return [matching_product, other_product]
+
+    async def fake_quantities_for_variants(self, variant_ids):
+        return {variant_id: 0 for variant_id in variant_ids}
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            "/admin/stock?search=funda", headers={"Authorization": f"Bearer {token}"}
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [row["product_name"] for row in body] == [matching_product.name]
+
+
+def test_list_stock_bulk_read_failure_returns_500_with_no_execute_or_raise(monkeypatch) -> None:
+    product = make_product()
+
+    async def fake_list_all(self):
+        return [product]
+
+    async def failing_quantities_for_variants(self, variant_ids):
+        raise asyncpg.PostgresConnectionError("connection lost")
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", failing_quantities_for_variants
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get("/admin/stock", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 500
