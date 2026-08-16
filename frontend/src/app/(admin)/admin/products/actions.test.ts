@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { signedQuantityDelta } from "./stock-movement-sign";
 
 /**
  * `createProductAction` / `updateProductAction` / `retireProductAction` /
@@ -610,39 +611,27 @@ describe("retireVariantAction", () => {
 });
 
 describe("signedQuantityDelta", () => {
-  it("returns a positive delta for restock, ignoring direction", async () => {
-    const { signedQuantityDelta } = await importActions();
-
+  it("returns a positive delta for restock, ignoring direction", () => {
     expect(signedQuantityDelta("restock", 5, "decrease")).toBe(5);
   });
 
-  it("returns a positive delta for return, ignoring direction", async () => {
-    const { signedQuantityDelta } = await importActions();
-
+  it("returns a positive delta for return, ignoring direction", () => {
     expect(signedQuantityDelta("return", 3, "decrease")).toBe(3);
   });
 
-  it("returns a negative delta for sale, ignoring direction", async () => {
-    const { signedQuantityDelta } = await importActions();
-
+  it("returns a negative delta for sale, ignoring direction", () => {
     expect(signedQuantityDelta("sale", 3, "increase")).toBe(-3);
   });
 
-  it("returns a negative delta for breakage, ignoring direction", async () => {
-    const { signedQuantityDelta } = await importActions();
-
+  it("returns a negative delta for breakage, ignoring direction", () => {
     expect(signedQuantityDelta("breakage", 2, "increase")).toBe(-2);
   });
 
-  it("honours direction=increase for adjustment", async () => {
-    const { signedQuantityDelta } = await importActions();
-
+  it("honours direction=increase for adjustment", () => {
     expect(signedQuantityDelta("adjustment", 4, "increase")).toBe(4);
   });
 
-  it("honours direction=decrease for adjustment", async () => {
-    const { signedQuantityDelta } = await importActions();
-
+  it("honours direction=decrease for adjustment", () => {
     expect(signedQuantityDelta("adjustment", 4, "decrease")).toBe(-4);
   });
 });

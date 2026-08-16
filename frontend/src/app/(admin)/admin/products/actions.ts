@@ -31,6 +31,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { extractAdminError } from "@/lib/admin/api-error";
 import { adminBackendFetch } from "@/lib/admin/backend-fetch";
+import {
+  signedQuantityDelta,
+  type MovementDirection,
+} from "./stock-movement-sign";
 
 const ADMIN_LOGIN_PATH = "/admin/login";
 const ADMIN_PRODUCTS_PATH = "/admin/products";
@@ -262,35 +266,6 @@ export async function reorderProductImagesAction(
   }
 
   return { error: extractAdminError(result.status, result.body) };
-}
-
-/**
- * Sign derivation for stock movements (design.md Decision 7): the admin
- * always enters a positive magnitude; `restock`/`return` are always `+`,
- * `sale`/`breakage` are always `-`, and `direction` is honoured ONLY for
- * `adjustment` — for every other type `direction` is ignored, so a
- * wrong-sign submission is unreachable through the UI. Pure function, no
- * side effects, exported for direct unit testing.
- */
-export type MovementDirection = "increase" | "decrease";
-
-const POSITIVE_MOVEMENT_TYPES = new Set(["restock", "return"]);
-const NEGATIVE_MOVEMENT_TYPES = new Set(["sale", "breakage"]);
-
-export function signedQuantityDelta(
-  movementType: string,
-  magnitude: number,
-  direction: MovementDirection,
-): number {
-  if (POSITIVE_MOVEMENT_TYPES.has(movementType)) {
-    return magnitude;
-  }
-  if (NEGATIVE_MOVEMENT_TYPES.has(movementType)) {
-    return -magnitude;
-  }
-  // `adjustment` (and any unrecognized type — the domain rejects it with
-  // 422, not this function) — sign follows the explicit `direction`.
-  return direction === "decrease" ? -magnitude : magnitude;
 }
 
 /**
