@@ -16,6 +16,13 @@ vi.mock("./actions", () => ({
   signOutAction: (...args: unknown[]) => SIGN_OUT_ACTION(...args),
 }));
 
+// `StockAlertBadge` is an async Server Component; RTL cannot client-render
+// one under `Suspense` (design.md "Testing Strategy"), so it is stubbed
+// with a synchronous marker to prove only the layout's own wiring.
+vi.mock("./stock-alert-badge", () => ({
+  StockAlertBadge: () => <span>BADGE_STUB</span>,
+}));
+
 async function importLayout() {
   const mod = await import("./layout");
   return mod.default;
@@ -52,6 +59,16 @@ describe("AdminLayout", () => {
       "href",
       "/admin/stock",
     );
+  });
+
+  it("renders the low-stock badge inside the Stock link", async () => {
+    const AdminLayout = await importLayout();
+    render(<AdminLayout>{<p>Landing content</p>}</AdminLayout>);
+
+    const stockLink = screen.getByRole("link", { name: /stock/i });
+    expect(
+      screen.getByText("BADGE_STUB").closest("a"),
+    ).toBe(stockLink);
   });
 
   it("invokes signOutAction when the sign-out control is submitted", async () => {

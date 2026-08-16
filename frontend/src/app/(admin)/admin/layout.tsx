@@ -1,6 +1,7 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { signOutAction } from "./actions";
+import { StockAlertBadge } from "./stock-alert-badge";
 
 /**
  * Admin shell wrapping every `/admin/*` page — mirrors the shape of
@@ -9,6 +10,12 @@ import { signOutAction } from "./actions";
  * (no client-side state needed here, unlike the login form's
  * `useActionState`), per `admin-authentication` spec's "Logout Clears
  * The Session" requirement.
+ *
+ * `StockAlertBadge` is an async Server Component mounted through
+ * `<Suspense fallback={null}>` (design.md Decision 1) so the shell — this
+ * nav included — renders immediately and stays clickable while the
+ * low-stock count streams in; a failure there is contained to that one
+ * subtree. `AdminLayout` itself stays a **synchronous** Server Component.
  */
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
@@ -23,7 +30,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               Products
             </Link>
             <Link href="/admin/stock" className="text-sm">
-              Stock
+              Stock{" "}
+              <Suspense fallback={null}>
+                <StockAlertBadge />
+              </Suspense>
             </Link>
             <form action={signOutAction}>
               <button type="submit" className="text-sm">
