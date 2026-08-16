@@ -101,6 +101,68 @@ async def test_level_reader_returns_zero_for_variant_with_no_movements(db_conn) 
     assert await reader.quantity_on_hand(variant_id) == 0
 
 
+async def test_quantities_for_variants_matches_each_variants_quantity_on_hand(
+    db_conn,
+) -> None:
+    variant_a_id = await make_persisted_variant_id(db_conn)
+    variant_b_id = await make_persisted_variant_id(db_conn)
+    repository = PostgresStockMovementRepository(db_conn)
+    reader = PostgresStockLevelReader(db_conn)
+    await repository.record(
+        StockMovement(
+            variant_id=variant_a_id, movement_type=MovementType.RESTOCK, quantity_delta=10
+        )
+    )
+    await repository.record(
+        StockMovement(
+            variant_id=variant_a_id, movement_type=MovementType.SALE, quantity_delta=-3
+        )
+    )
+    await repository.record(
+        StockMovement(
+            variant_id=variant_b_id, movement_type=MovementType.RESTOCK, quantity_delta=20
+        )
+    )
+
+    quantities = await reader.quantities_for_variants([variant_a_id, variant_b_id])
+
+    assert quantities == {variant_a_id: 7, variant_b_id: 20}
+
+
+async def test_quantities_for_variants_id_with_no_movements_resolves_to_zero(
+    db_conn,
+) -> None:
+    variant_id = await make_persisted_variant_id(db_conn)
+    reader = PostgresStockLevelReader(db_conn)
+
+    quantities = await reader.quantities_for_variants([variant_id])
+
+    assert quantities == {variant_id: 0}
+
+
+async def test_quantities_for_variants_excludes_ids_not_requested(db_conn) -> None:
+    requested_id = await make_persisted_variant_id(db_conn)
+    other_id = await make_persisted_variant_id(db_conn)
+    repository = PostgresStockMovementRepository(db_conn)
+    reader = PostgresStockLevelReader(db_conn)
+    await repository.record(
+        StockMovement(
+            variant_id=other_id, movement_type=MovementType.RESTOCK, quantity_delta=99
+        )
+    )
+
+    quantities = await reader.quantities_for_variants([requested_id])
+
+    assert quantities == {requested_id: 0}
+    assert other_id not in quantities
+
+
+async def test_quantities_for_variants_empty_input_returns_empty_dict(db_conn) -> None:
+    reader = PostgresStockLevelReader(db_conn)
+
+    assert await reader.quantities_for_variants([]) == {}
+
+
 async def test_record_against_unknown_variant_raises_unknown_variant_error(
     db_conn,
 ) -> None:

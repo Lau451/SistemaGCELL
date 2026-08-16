@@ -173,13 +173,66 @@ class AdminProductResponse(BaseModel):
         )
 
 
+class AdminProductListVariantResponse(BaseModel):
+    # List-only: adds `quantity_on_hand` to the same four fields as
+    # `AdminProductVariantResponse` (design.md Decision 3). NOT a subclass --
+    # Pydantic serializes by declared field type, so a subclass would
+    # silently drop the extra key when a caller type-hints the parent.
+    id: UUID
+    color: str
+    price: Decimal
+    cost: Decimal
+    quantity_on_hand: int
+
+
+class AdminProductListItemResponse(BaseModel):
+    # List-only response model for `GET /admin/products` -- stock appears
+    # ONLY here, never on GET-by-id/POST/PATCH, which keep using
+    # `AdminProductResponse` untouched (D7, design.md Decision 3).
+    id: UUID
+    slug: str
+    name: str
+    model: str
+    variants: list[AdminProductListVariantResponse]
+
+    @classmethod
+    def from_domain(
+        cls, product: Product, quantities: dict[UUID, int]
+    ) -> "AdminProductListItemResponse":
+        return cls(
+            id=product.id,
+            slug=product.slug,
+            name=product.name,
+            model=product.model,
+            variants=[
+                AdminProductListVariantResponse(
+                    id=variant.id,
+                    color=variant.color,
+                    price=variant.price,
+                    cost=variant.cost,
+                    quantity_on_hand=quantities[variant.id],
+                )
+                for variant in product.variants
+            ],
+        )
+
+
 @router.get("/products")
 async def list_admin_products(
     pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
-) -> list[AdminProductResponse]:
+) -> list[AdminProductListItemResponse]:
+    # Composes `list_all()` with exactly ONE bulk stock read (design.md
+    # Decision 3 / D3) -- never a per-variant loop. D6: no
+    # `_execute_or_raise` here -- a bulk-read failure propagates naturally
+    # to FastAPI's default 500, matching how a `list_all()` failure already
+    # behaves; wrapping it would mislabel a driver failure as a 422.
     async with pool.acquire() as conn:
         products = await PostgresProductRepository(conn).list_all()
-    return [AdminProductResponse.from_domain(product) for product in products]
+        variant_ids = [variant.id for product in products for variant in product.variants]
+        quantities = await PostgresStockLevelReader(conn).quantities_for_variants(variant_ids)
+    return [
+        AdminProductListItemResponse.from_domain(product, quantities) for product in products
+    ]
 
 
 @router.get("/products/{product_id}")

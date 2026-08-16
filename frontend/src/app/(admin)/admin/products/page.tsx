@@ -28,6 +28,7 @@ interface AdminProductVariant {
   color: string;
   price: string;
   cost: string;
+  quantity_on_hand: number;
 }
 
 interface AdminProduct {
@@ -97,11 +98,23 @@ export default async function AdminProductsPage() {
                   <span className="text-muted-foreground">No variants</span>
                 ) : (
                   <ul className="flex flex-col gap-1">
-                    {product.variants.map((variant) => (
-                      <li key={variant.id}>
-                        {variant.color} — {variant.price} / {variant.cost}
-                      </li>
-                    ))}
+                    {product.variants.map((variant) => {
+                      const isZero = variant.quantity_on_hand === 0;
+                      return (
+                        <li
+                          key={variant.id}
+                          className={isZero ? "text-destructive" : undefined}
+                        >
+                          {variant.color} — {variant.price} / {variant.cost} —{" "}
+                          <span>{variant.quantity_on_hand}</span>
+                          {isZero && (
+                            <span className="ml-1 text-xs font-medium">
+                              Out of stock
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </td>

@@ -14,6 +14,7 @@ why a spy cannot prove that case).
 from decimal import Decimal
 from uuid import uuid4
 
+import asyncpg
 import pytest
 from admin_jwt_integration_support import make_valid_admin_token
 from fastapi.testclient import TestClient
@@ -27,6 +28,10 @@ from gcell.products.application.exceptions import (
 from gcell.products.domain.product import Product, ProductVariant
 from gcell.products.infrastructure.postgres_product_repository import (
     PostgresProductRepository,
+)
+from gcell.stock.application.create_stocked_product import CreateStockedProductUseCase
+from gcell.stock.infrastructure.postgres_stock_level_reader import (
+    PostgresStockLevelReader,
 )
 
 
@@ -89,12 +94,27 @@ def test_valid_token_with_pool_returns_200_with_product_rows(monkeypatch) -> Non
     monkeypatch.delenv("DB_URL", raising=False)
     token = make_valid_admin_token()
 
-    product = Product(id=uuid4(), slug="test-product", name="Test Product", model="TP-1")
+    variant = ProductVariant(
+        id=uuid4(), color="Negro", price=Decimal("45000.00"), cost=Decimal("30000.00")
+    )
+    product = Product(
+        id=uuid4(),
+        slug="test-product",
+        name="Test Product",
+        model="TP-1",
+        variants=[variant],
+    )
 
     async def fake_list_all(self) -> list[Product]:
         return [product]
 
+    async def fake_quantities_for_variants(self, variant_ids):
+        return {variant_id: 7 for variant_id in variant_ids}
+
     monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
 
     with TestClient(app) as client:
         client.app.state.db_pool = _FakePool()
@@ -108,9 +128,168 @@ def test_valid_token_with_pool_returns_200_with_product_rows(monkeypatch) -> Non
             "slug": "test-product",
             "name": "Test Product",
             "model": "TP-1",
-            "variants": [],
+            "variants": [
+                {
+                    "id": str(variant.id),
+                    "color": "Negro",
+                    "price": "45000.00",
+                    "cost": "30000.00",
+                    "quantity_on_hand": 7,
+                }
+            ],
         }
     ]
+
+
+def test_list_admin_products_calls_bulk_stock_reader_exactly_once(monkeypatch) -> None:
+    # D3: serving the whole catalog issues one stock query regardless of
+    # product/variant count -- proves no N+1 loop crept in.
+    monkeypatch.delenv("DB_URL", raising=False)
+    token = make_valid_admin_token()
+
+    products = [
+        Product(
+            id=uuid4(),
+            slug=f"test-product-{i}",
+            name=f"Test Product {i}",
+            model="TP-1",
+            variants=[
+                ProductVariant(
+                    id=uuid4(),
+                    color="Negro",
+                    price=Decimal("45000.00"),
+                    cost=Decimal("30000.00"),
+                ),
+                ProductVariant(
+                    id=uuid4(),
+                    color="Blanco",
+                    price=Decimal("45000.00"),
+                    cost=Decimal("30000.00"),
+                ),
+            ],
+        )
+        for i in range(3)
+    ]
+
+    async def fake_list_all(self) -> list[Product]:
+        return products
+
+    calls: list[list] = []
+
+    async def spying_quantities_for_variants(self, variant_ids):
+        calls.append(list(variant_ids))
+        return {variant_id: 0 for variant_id in variant_ids}
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader,
+        "quantities_for_variants",
+        spying_quantities_for_variants,
+    )
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get("/admin/products", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert len(calls[0]) == 6  # 3 products * 2 variants each
+
+
+def test_list_admin_products_bulk_stock_read_failure_returns_500(monkeypatch) -> None:
+    # D6: no `_execute_or_raise` involvement -- an unhandled driver failure
+    # propagates to FastAPI's default 500, never a partial/degraded 200 body.
+    monkeypatch.delenv("DB_URL", raising=False)
+    token = make_valid_admin_token()
+
+    variant = ProductVariant(
+        id=uuid4(), color="Negro", price=Decimal("45000.00"), cost=Decimal("30000.00")
+    )
+    product = Product(
+        id=uuid4(), slug="test-product", name="Test Product", model="TP-1", variants=[variant]
+    )
+
+    async def fake_list_all(self) -> list[Product]:
+        return [product]
+
+    async def failing_quantities_for_variants(self, variant_ids):
+        raise asyncpg.PostgresConnectionError("connection lost")
+
+    monkeypatch.setattr(PostgresProductRepository, "list_all", fake_list_all)
+    monkeypatch.setattr(
+        PostgresStockLevelReader,
+        "quantities_for_variants",
+        failing_quantities_for_variants,
+    )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get("/admin/products", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 500
+
+
+def test_get_admin_product_by_id_response_has_no_quantity_on_hand_key(monkeypatch) -> None:
+    # D7: stock appears ONLY on GET /admin/products (list) -- GET-by-id stays
+    # exactly as it was before this change.
+    monkeypatch.delenv("DB_URL", raising=False)
+    token = make_valid_admin_token()
+
+    variant = ProductVariant(
+        id=uuid4(), color="Negro", price=Decimal("45000.00"), cost=Decimal("30000.00")
+    )
+    product = Product(
+        id=uuid4(), slug="test-product", name="Test Product", model="TP-1", variants=[variant]
+    )
+
+    async def fake_get_by_id(self, product_id):
+        return product
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}", headers={"Authorization": f"Bearer {token}"}
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "quantity_on_hand" not in body["variants"][0]
+
+
+def test_create_admin_product_response_has_no_quantity_on_hand_key(monkeypatch) -> None:
+    # D7: POST is unaffected -- the shared `AdminProductResponse` model is
+    # untouched, no fabricated stock value on a just-created variant.
+    monkeypatch.delenv("DB_URL", raising=False)
+    token = make_valid_admin_token()
+    created_variant = ProductVariant(
+        id=uuid4(), color="Negro", price=Decimal("45000.00"), cost=Decimal("30000.00")
+    )
+    created_product = Product(
+        id=uuid4(),
+        slug="test-product",
+        name="Test Product",
+        model="TP-1",
+        variants=[created_variant],
+    )
+
+    async def fake_execute(self, **kwargs):
+        return created_product
+
+    monkeypatch.setattr(CreateStockedProductUseCase, "execute", fake_execute)
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.post(
+            "/admin/products",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"name": "Test Product", "model": "TP-1", "variants": []},
+        )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert "quantity_on_hand" not in body["variants"][0]
 
 
 # ---------------------------------------------------------------------------

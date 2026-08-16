@@ -59,7 +59,13 @@ describe("AdminProductsPage", () => {
             name: "Funda iPhone 15",
             model: "iPhone 15",
             variants: [
-              { id: "v1", color: "negro", price: "5000", cost: "2000" },
+              {
+                id: "v1",
+                color: "negro",
+                price: "5000",
+                cost: "2000",
+                quantity_on_hand: 12,
+              },
             ],
           },
         ]),
@@ -204,6 +210,100 @@ describe("AdminProductsPage", () => {
     expect(
       screen.queryByRole("checkbox", { name: /filter/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders a non-zero variant's quantity with no Out of stock label", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          {
+            id: "p1",
+            slug: "funda-iphone-15",
+            name: "Funda iPhone 15",
+            model: "iPhone 15",
+            variants: [
+              {
+                id: "v1",
+                color: "negro",
+                price: "5000",
+                cost: "2000",
+                quantity_on_hand: 12,
+              },
+            ],
+          },
+        ]),
+    } as Response);
+
+    const AdminProductsPage = await importPage();
+    const jsx = await AdminProductsPage();
+    render(jsx);
+
+    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.queryByText(/out of stock/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a zero-quantity variant with the same Out of stock treatment as stock-manager", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          {
+            id: "p1",
+            slug: "funda-iphone-15",
+            name: "Funda iPhone 15",
+            model: "iPhone 15",
+            variants: [
+              {
+                id: "v1",
+                color: "negro",
+                price: "5000",
+                cost: "2000",
+                quantity_on_hand: 0,
+              },
+            ],
+          },
+        ]),
+    } as Response);
+
+    const AdminProductsPage = await importPage();
+    const jsx = await AdminProductsPage();
+    render(jsx);
+
+    const label = screen.getByText("Out of stock");
+    expect(label).toBeInTheDocument();
+    expect(label.closest("li")).toHaveClass("text-destructive");
+  });
+
+  it("issues no additional fetch call to render per-variant stock", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          {
+            id: "p1",
+            slug: "funda-iphone-15",
+            name: "Funda iPhone 15",
+            model: "iPhone 15",
+            variants: [
+              {
+                id: "v1",
+                color: "negro",
+                price: "5000",
+                cost: "2000",
+                quantity_on_hand: 3,
+              },
+            ],
+          },
+        ]),
+    } as Response);
+
+    const AdminProductsPage = await importPage();
+    const jsx = await AdminProductsPage();
+    render(jsx);
+
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("renders an error state when the proxy route fails, without throwing", async () => {
