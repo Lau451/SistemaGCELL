@@ -93,7 +93,9 @@ def _spy_all_adapters(monkeypatch, calls: list[str]) -> None:
         PostgresProductRepository, "get_by_id", _spy(calls, "product_repo.get_by_id")
     )
     monkeypatch.setattr(
-        PostgresStockLevelReader, "quantity_on_hand", _spy(calls, "stock_reader.quantity_on_hand")
+        PostgresStockLevelReader,
+        "quantities_for_variants",
+        _spy(calls, "stock_reader.quantities_for_variants"),
     )
     monkeypatch.setattr(
         PostgresStockMovementRepository, "record", _spy(calls, "movement_repo.record")
@@ -163,11 +165,13 @@ def test_get_stock_for_variant_with_no_movements_returns_zero(monkeypatch) -> No
     async def fake_get_by_id(self, product_id):
         return product if product_id == product.id else None
 
-    async def fake_quantity_on_hand(self, variant_id):
-        return 0
+    async def fake_quantities_for_variants(self, variant_ids):
+        return {vid: 0 for vid in variant_ids}
 
     monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
-    monkeypatch.setattr(PostgresStockLevelReader, "quantity_on_hand", fake_quantity_on_hand)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
     token = make_valid_admin_token()
 
     with TestClient(app) as client:
@@ -181,6 +185,38 @@ def test_get_stock_for_variant_with_no_movements_returns_zero(monkeypatch) -> No
     assert response.json() == [
         {"variant_id": str(variant.id), "color": variant.color, "quantity_on_hand": 0}
     ]
+
+
+def test_get_stock_calls_bulk_reader_exactly_once_regardless_of_variant_count(
+    monkeypatch,
+) -> None:
+    variants = [make_variant("Negro"), make_variant("Azul"), make_variant("Rojo")]
+    product = make_product(variants=variants)
+    calls: list[str] = []
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    async def fake_quantities_for_variants(self, variant_ids):
+        calls.append("stock_reader.quantities_for_variants")
+        return {vid: 7 for vid in variant_ids}
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/stock",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 3
+    assert calls == ["stock_reader.quantities_for_variants"]
 
 
 def test_post_movement_with_foreign_variant_id_returns_404_and_zero_writes(monkeypatch) -> None:
@@ -298,12 +334,17 @@ def test_post_then_get_readback_reflects_the_running_sum(monkeypatch) -> None:
     async def fake_record(self, movement):
         movements.append(movement)
 
-    async def fake_quantity_on_hand(self, variant_id):
-        return sum(m.quantity_delta for m in movements if m.variant_id == variant_id)
+    async def fake_quantities_for_variants(self, variant_ids):
+        return {
+            vid: sum(m.quantity_delta for m in movements if m.variant_id == vid)
+            for vid in variant_ids
+        }
 
     monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
     monkeypatch.setattr(PostgresStockMovementRepository, "record", fake_record)
-    monkeypatch.setattr(PostgresStockLevelReader, "quantity_on_hand", fake_quantity_on_hand)
+    monkeypatch.setattr(
+        PostgresStockLevelReader, "quantities_for_variants", fake_quantities_for_variants
+    )
     token = make_valid_admin_token()
     headers = {"Authorization": f"Bearer {token}"}
     movement_path = f"/admin/products/{product.id}/variants/{variant.id}/stock/movements"

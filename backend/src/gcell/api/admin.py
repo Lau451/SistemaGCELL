@@ -606,11 +606,13 @@ async def get_admin_product_stock(
         product = await PostgresProductRepository(conn).get_by_id(product_id)
         if product is None:
             raise HTTPException(status_code=404, detail="not_found")
-        reader = PostgresStockLevelReader(conn)
+        # One bulk query regardless of variant count -- was previously a
+        # `quantity_on_hand` loop (N+1), same fix `admin-stock-overview`
+        # already applied to `list_admin_products`.
+        variant_ids = [variant.id for variant in product.variants]
+        quantities = await PostgresStockLevelReader(conn).quantities_for_variants(variant_ids)
         return [
-            AdminVariantStockResponse.from_domain(
-                variant, await reader.quantity_on_hand(variant.id)
-            )
+            AdminVariantStockResponse.from_domain(variant, quantities[variant.id])
             for variant in product.variants
         ]
 
