@@ -83,22 +83,27 @@ though it is not production code).
 
 ## Phase 2: Postgres bootstrap — PR 2 (wires EXISTING DB tests in)
 
-- [ ] 2.1 RED (manual, not committed) — start a bare `postgres:17` container,
+- [x] 2.1 RED (manual, not committed) — start a bare `postgres:17` container,
       replay `supabase/migrations/*.sql` with `psql` directly, no bootstrap.
       Confirm it fails exactly where design.md's DD1 table says: missing
       `service_role`/`anon`/`authenticated` at `20260810000458`, then the
       missing `storage` schema at `20260810000502`.
-- [ ] 2.2 GREEN `supabase/ci/00_supabase_roles.sql` (new, CI-only, not a
+      **Result: confirmed exactly as predicted — `ERROR: role "service_role"
+      does not exist` at line 63 of `20260810000458_public_catalog_rls.sql`,
+      then `ERROR: relation "storage.buckets" does not exist` at line 8 of
+      `20260810000502_storage_product_photos.sql`.**
+- [x] 2.2 GREEN `supabase/ci/00_supabase_roles.sql` (new, CI-only, not a
       migration) — literal content from design.md: `anon`, `authenticated`
       (nologin noinherit), `service_role` (nologin noinherit **bypassrls**),
       `grant usage on schema public to anon, authenticated, service_role`.
-- [ ] 2.3 GREEN `supabase/ci/01_storage_schema.sql` (new, CI-only) — literal
+- [x] 2.3 GREEN `supabase/ci/01_storage_schema.sql` (new, CI-only) — literal
       content: `create schema storage`; `storage.buckets` / `storage.objects`
       tables; RLS enabled on both; broad grants to `anon`/`authenticated`/
       `service_role` (policy restricts, not the grant, per design).
-- [ ] 2.4 Re-run 2.1's manual replay with both bootstrap files applied first
+- [x] 2.4 Re-run 2.1's manual replay with both bootstrap files applied first
       — confirm all 5 migrations replay clean end to end.
-- [ ] 2.5 Extend `.github/workflows/ci.yml` backend job — add
+      **Result: all 5 migrations applied clean, zero errors.**
+- [x] 2.5 Extend `.github/workflows/ci.yml` backend job — add
       `services.postgres` (`postgres:17`, health-checked), `env.DB_URL`, a
       "Bootstrap Supabase-managed roles and storage surface" step
       (`psql -f supabase/ci/00_supabase_roles.sql` then `01_storage_schema.sql`),

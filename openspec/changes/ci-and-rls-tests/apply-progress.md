@@ -207,3 +207,55 @@ all exposed for the first time by actually running CI:
 All three fixed in `8b0cf22` (test-file-only changes, zero `backend/src`/
 `frontend/src` touched, consistent with D5). Second run (31992452282) went
 fully green on both jobs. Task 1.4 marked complete.
+
+## PR 2 — Postgres Bootstrap (tasks 2.1-2.5, orchestrator)
+
+**What**: Wired a `postgres:17` service container plus repo-owned CI
+bootstrap into the backend job, so the ~15 pre-existing DB-integration test
+files (silently skipping since inception, per `conftest.py`'s `DB_URL`
+skip-guard) execute for real in CI.
+
+**2.1 (manual RED, not committed)**: Started a throwaway bare `postgres:17`
+container (`docker run ... -p 55432:5432 postgres:17`), copied the 5
+`supabase/migrations/*.sql` files in, replayed them in lexicographic order
+with `psql -v ON_ERROR_STOP=1` and no bootstrap. Failed exactly where
+design.md's DD1 table predicted:
+- `20260810000458_public_catalog_rls.sql:63` → `ERROR: role "service_role"
+  does not exist`
+- `20260810000502_storage_product_photos.sql:8` → `ERROR: relation
+  "storage.buckets" does not exist`
+
+**2.2/2.3 (GREEN)**: Wrote `supabase/ci/00_supabase_roles.sql` (creates
+`anon`/`authenticated`/`service_role` with `service_role` granted
+`bypassrls`, `grant usage on schema public`) and
+`supabase/ci/01_storage_schema.sql` (minimal `storage.buckets`/
+`storage.objects` stub, RLS enabled on both, broad grants matching
+Supabase's real posture) — both verbatim from design.md's Interfaces/
+Contracts section.
+
+**2.4 (re-verify)**: Fresh container, bootstrap files applied first, then
+all 5 migrations replayed — clean end to end, zero errors. Container
+removed after verification (`docker rm -f ci_bare_pg17`), nothing left
+running.
+
+**2.5 (GREEN, ci.yml)**: Extended the `backend` job in
+`.github/workflows/ci.yml` with `services.postgres` (`postgres:17`,
+`pg_isready` health check, port 5432), `env.DB_URL`, a "Bootstrap
+Supabase-managed roles and storage surface" step running both `psql -f`
+commands, and a "Replay supabase/migrations" step (`for f in
+supabase/migrations/*.sql`). Exact shape from design.md's Interfaces/
+Contracts — nothing improvised.
+
+**Local verification before push**:
+- `uv run pytest backend/tests/architecture/test_ci_workflow_safety.py -v`
+  — all 6 static safety tests still pass against the extended `ci.yml`
+  (the new `DB_URL` env value and bootstrap/replay `run:` blocks contain no
+  secret-shaped literal, no `${{ github.event`/`head_ref` interpolation).
+- Full backend suite with `DB_URL` pointed at the local `supabase start`
+  Postgres (`postgresql://postgres:postgres@127.0.0.1:54322/postgres`):
+  **358 passed, 0 skipped** (vs. 293 passed / 65 skipped without `DB_URL`)
+  — confirms the previously-dormant DB-backed files are healthy against a
+  real Postgres before trusting the CI-only bootstrap stub.
+
+**Task 2.6 (live verification)**: pending — requires pushing to a real
+GitHub Actions run, same "push and verify" pattern as PR 1.
