@@ -264,3 +264,161 @@ passed, 2 warnings in 4.18s`, zero skips, exactly matching the local
 `DB_URL`-set sanity run. Confirms the ~15 previously-dormant DB-integration
 test files execute for real in CI now. No newly-surfaced failure, so no
 follow-up needed per design's Risks section.
+
+## Batch 2 of 4: Phase 3 — RLS module, part A (read boundary, PR 3)
+
+**Mode**: Strict TDD (project-wide `strict_tdd: true`), applied via a
+behavioral RED proof (see 3.1 below) rather than a classic "fails until
+source is fixed" cycle — this is a proving test suite against
+already-shipped RLS policies (D5 forbids any `backend/src/` change), so
+there is no defect to fix. The equivalent TDD discipline here is proving the
+harness is not vacuous before trusting any GREEN.
+
+**Delivery**: chained PR slice, Work Unit 3 of 4 (`Suggested Work Units`
+table in tasks.md). Scope pre-assigned as "PR 3 of 4" — RLS module part A —
+and stays inside that unit's boundary only. Phase 4 (service_role CRUD,
+ledger grant-layer split, DD5 append-only two-layer proof, storage matrix)
+is explicitly **not** touched in this batch; Phases 1-2 were already
+committed, pushed, and verified green on live GitHub Actions before this
+batch started (see Batch 1 and PR 2 sections above).
+
+### Completed Tasks
+
+- [x] 3.1 — Created `backend/tests/integration/db/test_rls_policies.py`
+      (new file) with the module docstring, `BASE_TABLES` / `CATALOG_VIEWS` /
+      `RESTRICTED_ROLES` constants, and the `as_role()` SAVEPOINT helper —
+      verbatim from design.md's Interfaces/Contracts section. **Deviation
+      note**: the task's literal instruction ("run locally against a
+      bootstrap missing `bypassrls`") describes a Phase 4/service_role
+      concern (design.md DD1's load-bearing `bypassrls` detail matters only
+      for `service_role`'s CRUD tests, added in Phase 4). It does not apply
+      to Part A, whose only role-switch tests are `anon`/`authenticated`
+      denial — neither role ever has `bypassrls`, so removing it from a
+      bootstrap changes nothing they can observe. The local instance is also
+      the real `supabase start` stack (confirmed via `npx supabase status`:
+      `DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`),
+      not the CI-only `supabase/ci/00_supabase_roles.sql` bootstrap from
+      Phase 2 — there is no "missing bypassrls" variant of it to run
+      against locally without mutating an already-shipped Phase 2 file,
+      which is out of this batch's scope. Substituted the equivalent proof:
+      temporarily commented out the `SET LOCAL ROLE "{role}"` line inside
+      `as_role()` and re-ran every test that depends on it behaviorally (the
+      8 base-table denial tests + the 2 `variant_stock_levels` denial
+      tests) — all 10 failed with `Failed: DID NOT RAISE
+      InsufficientPrivilegeError` (the superuser `db_conn` connection can
+      read anything without the role switch), proving the harness
+      genuinely exercises Postgres's RLS/grant enforcement rather than
+      passing vacuously. Reverted the line immediately after; the file
+      committed contains no trace of the temporary edit.
+- [x] 3.2 — Denial test `test_restricted_role_select_denied_on_base_table`,
+      parametrized 2 roles × 4 `BASE_TABLES` = 8 cases, each
+      `pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError)` inside
+      `as_role`. 8/8 passed first run (zero policies + zero grants on all 4
+      base tables, already shipped).
+- [x] 3.3 — Privilege-matrix test
+      `test_restricted_role_has_no_privilege_on_base_table`, parametrized 2
+      roles × 4 tables × 4 privileges (`select`/`insert`/`update`/`delete`)
+      = 32 cases, `SELECT has_table_privilege($1, $2, $3)` asserted `False`
+      — no `SET ROLE` needed per design.md. 32/32 passed.
+- [x] 3.4 — Catalog-view test
+      `test_restricted_role_can_read_seeded_row_from_catalog_view`: seeds
+      one product + variant + hero image as superuser via `db_conn`
+      (`PostgresProductRepository.add` + a raw-SQL `product_images` insert,
+      mirroring `test_catalog_soft_delete_views.py`'s existing pattern),
+      then under `as_role` for both roles asserts `count(*) == 1` on each of
+      the 3 `CATALOG_VIEWS`, parametrized 2 roles × 3 views = 6 cases. 6/6
+      passed.
+- [x] 3.5 — Three soft-delete test functions, all reading through
+      `as_role(db_conn, "anon")` after a superuser `UPDATE ... SET
+      deleted_at = now()`:
+      `test_retiring_the_product_hides_it_from_all_three_views_for_anon`,
+      `test_retiring_one_variant_hides_only_that_variant_and_its_image_for_anon`,
+      `test_a_live_sibling_product_stays_visible_to_anon_after_a_retirement`.
+      3/3 passed.
+- [x] 3.6 — Internal-view tests for `variant_stock_levels`:
+      `test_restricted_role_has_no_select_privilege_on_variant_stock_levels`
+      (`has_table_privilege` False, parametrized 2 roles) and
+      `test_restricted_role_is_denied_reading_variant_stock_levels`
+      (behavioral denial under `as_role`, parametrized 2 roles). 4/4 passed.
+- [x] 3.7 — Verify: `DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      uv run pytest backend/tests/integration/db/test_rls_policies.py -v` →
+      **53 passed** (8 + 32 + 6 + 3 + 4 = 53, matches the file's full
+      parametrized count exactly). Full backend suite with the same
+      `DB_URL`: **411 passed, 0 failed** (358 pre-existing from PR 2's
+      verification + 53 new). Confirmed zero leftover rows by querying
+      `docker exec supabase_db_SistemaGCELL psql -U postgres -c "SELECT
+      count(*) FROM products WHERE slug LIKE 'funda-rls-%'"` directly after
+      the full run — **0 rows** — confirming `db_conn`'s outer-transaction
+      rollback (unmodified, per D5/DD4) leaves no trace, not just assuming
+      it. `uv run ruff check tests/integration/db/test_rls_policies.py` →
+      **All checks passed!**
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `backend/tests/integration/db/test_rls_policies.py` | Created | `as_role()` SAVEPOINT helper + 53 parametrized tests: base-table denial (8), privilege matrix (32), catalog views (6), soft-delete (3), internal view (4) |
+| `openspec/changes/ci-and-rls-tests/tasks.md` | Modified | Marked 3.1–3.7 complete with per-task Result notes |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres uv run pytest backend/tests/integration/db/test_rls_policies.py -v` (from repo root) → **53 passed** |
+| Runtime harness command/scenario and exact result | Real local `supabase start` Postgres (confirmed running via `docker ps` — `supabase_db_SistemaGCELL` present — and `npx supabase status`), not a mock or stub. Every assertion executes actual `SET LOCAL ROLE` / RLS / grant enforcement against real Postgres system catalogs. Full backend suite against the same instance: `cd backend && DB_URL=... uv run pytest -q` → **411 passed, 0 failed** |
+| Rollback boundary | Delete `backend/tests/integration/db/test_rls_policies.py`; no other file touched in this batch. `db_conn`'s existing per-test transaction rollback (unchanged, D5/DD4) means no schema, policy, grant, or data change is left behind by any test run — verified directly via `psql` row count, not assumed |
+
+### TDD Cycle Evidence (Strict TDD)
+
+| Task | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| 3.1–3.2 (`as_role()` + base-table denial) | Temporarily disabled `SET LOCAL ROLE` inside `as_role()`; ran the 8 base-table denial tests → **8 failed**, each `Failed: DID NOT RAISE InsufficientPrivilegeError` (superuser bypasses without the role switch) | Reverted the line; re-ran → **8 passed** | Not needed — `as_role()` matched design.md's Interfaces/Contracts verbatim on first correct GREEN |
+| 3.6 (`variant_stock_levels` behavioral denial) | Same disabled-role-switch run also covered the 2 `variant_stock_levels` denial tests → **2 failed**, same `DID NOT RAISE` | Reverted; re-ran → **2 passed** | Not needed |
+| 3.3 (privilege matrix) | N/A — pure SQL-function assertion (`has_table_privilege`), no `SET ROLE`/`as_role()` dependency to prove non-vacuous; correctness is exact (`False` for a role with zero grants is unconditionally true, not a behavior that a broken harness could fake) | 32/32 passed against the already-shipped grant state | N/A |
+| 3.4–3.5 (catalog views + soft delete) | Implicitly covered by the same `as_role()` proof above — these tests share the identical role-switch mechanism already proven genuine in 3.1/3.2/3.6; no separate isolated RED needed for read-success assertions (a broken `as_role()` that never switches role would still show `count == 1` as superuser, so the meaningful RED for this direction is the *denial* tests failing when the switch is real but misapplied — not applicable here since the seed rows genuinely exist and are genuinely visible through the view's own `WHERE deleted_at IS NULL` predicate, independent of role) | 6/6 + 3/3 passed | Not needed |
+
+### Deviations from Design
+
+1. Task 3.1's literal "bootstrap missing `bypassrls`" RED instruction does
+   not map cleanly onto Part A's scope (anon/authenticated only); documented
+   above under 3.1 and in tasks.md's Result note. The substituted proof
+   (disable `SET LOCAL ROLE`, confirm all role-dependent denial tests fail)
+   is a strictly more direct test of the exact mechanism `as_role()`
+   provides, and required no modification of any already-shipped Phase
+   1/2 file.
+2. None otherwise — implementation matches design.md's Interfaces/Contracts
+   section for `test_rls_policies.py` exactly (constants, `as_role()` body,
+   parametrization shapes).
+
+### Issues Found
+
+None.
+
+### Remaining Tasks (future batches — not started)
+
+- [ ] Phase 4 (PR 4): `test_rls_policies.py` part B — service_role CRUD,
+      ledger grant-layer split, DD5 append-only two-layer proof, storage
+      matrix (tasks 4.1–4.6).
+- [ ] Phase 5: final combined regression across all 4 PRs + real GitHub
+      Actions green-run confirmation (tasks 5.1–5.4).
+
+### Workload / PR Boundary
+
+- Mode: chained PR slice (4 total), Work Unit 3 of 4
+- Current work unit: "RLS module part A: `as_role()` helper +
+  anon/authenticated denial, privilege matrix, catalog views, soft delete,
+  internal view" — exactly as scoped in tasks.md's `Suggested Work Units`
+  table
+- Boundary: starts from zero (`test_rls_policies.py` did not exist) and ends
+  with a green, self-contained, non-vacuously-proven read-boundary RLS test
+  module; does not touch `service_role`, storage, the append-only trigger,
+  or any `backend/src`/`frontend/src`/`.github/workflows` file
+- Estimated review budget impact: `test_rls_policies.py` is ~340 lines new
+  — inside the 400-line budget on its own, matching tasks.md's forecast for
+  this slice (the forecast's 450-550 line range was for the *full* module
+  including Phase 4's part B, not this slice alone)
+
+### Status
+
+18/28 total tasks complete (0.1, 1.1–1.4, 2.1–2.6, 3.1–3.7). Phase 4 (6
+tasks) and Phase 5 (4 tasks) remain for future `sdd-apply` batches.

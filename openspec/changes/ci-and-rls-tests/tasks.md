@@ -121,29 +121,52 @@ though it is not production code).
 
 ## Phase 3: RLS module, part A — PR 3 (read boundary)
 
-- [ ] 3.1 RED `backend/tests/integration/db/test_rls_policies.py` (new) —
+- [x] 3.1 RED `backend/tests/integration/db/test_rls_policies.py` (new) —
       module docstring; `BASE_TABLES` / `CATALOG_VIEWS` / `RESTRICTED_ROLES`
       constants; `as_role()` async context manager (SAVEPOINT via
       `conn.transaction()`, `SET LOCAL ROLE "{role}"`, literal-only role
       input per Threat Matrix). Run locally against a bootstrap missing
       `bypassrls` to confirm the harness genuinely fails, not vacuously.
-- [ ] 3.2 GREEN — denial test: `anon`/`authenticated` `SELECT` denied on all
+      **Result: "missing bypassrls" is a Phase 4/service_role concern
+      (design.md DD1); it does not apply to Part A's anon/authenticated
+      reads, and the real local Supabase instance always provisions
+      `service_role` with `bypassrls` correctly (it is not the CI-only
+      bootstrap script). The equivalent proof used instead: temporarily
+      disabled the `SET LOCAL ROLE` line inside `as_role()` and re-ran the
+      10 behavioral denial tests (base-table denial ×8, `variant_stock_levels`
+      denial ×2) — all 10 genuinely failed with `Failed: DID NOT RAISE
+      InsufficientPrivilegeError` (superuser bypasses everything without the
+      role switch), confirming the harness is not vacuous. Reverted the
+      line; full suite re-ran green (see 3.7).**
+- [x] 3.2 GREEN — denial test: `anon`/`authenticated` `SELECT` denied on all
       4 `BASE_TABLES`, parametrized 2×4, `pytest.raises(InsufficientPrivilegeError)`
-      via `as_role`.
-- [ ] 3.3 GREEN — privilege-matrix test: `SELECT has_table_privilege($1,$2,$3)`
+      via `as_role`. **Result: 8/8 passed on first run against real local
+      Supabase (zero policies, zero grants on all 4 base tables).**
+- [x] 3.3 GREEN — privilege-matrix test: `SELECT has_table_privilege($1,$2,$3)`
       is `False` for both restricted roles × 4 base tables ×
-      {select, insert, update, delete}, parametrized 2×4×4.
-- [ ] 3.4 GREEN — catalog-view test: seed one product/variant/image as
+      {select, insert, update, delete}, parametrized 2×4×4. **Result: 32/32
+      passed.**
+- [x] 3.4 GREEN — catalog-view test: seed one product/variant/image as
       superuser via `db_conn`; under `as_role` for both roles assert
-      `count(*) == 1` on each of the 3 `CATALOG_VIEWS`.
-- [ ] 3.5 GREEN — soft-delete tests (3 functions, reuse 3.4's seed): retiring
+      `count(*) == 1` on each of the 3 `CATALOG_VIEWS`. **Result: 6/6
+      passed.**
+- [x] 3.5 GREEN — soft-delete tests (3 functions, reuse 3.4's seed): retiring
       the product hides it from all 3 views for `anon`; retiring one variant
       hides only that variant + its image; a live sibling stays visible.
-- [ ] 3.6 GREEN — internal-view test: `variant_stock_levels` unreadable by
+      **Result: 3/3 passed.**
+- [x] 3.6 GREEN — internal-view test: `variant_stock_levels` unreadable by
       `anon`/`authenticated` — `has_table_privilege` False plus behavioral
-      denial under `as_role`.
-- [ ] 3.7 Verify: `uv run pytest backend/tests/integration/db/test_rls_policies.py -v`
+      denial under `as_role`. **Result: 4/4 passed.**
+- [x] 3.7 Verify: `uv run pytest backend/tests/integration/db/test_rls_policies.py -v`
       green locally against `supabase start`; confirm no test leaves rows.
+      **Result: 53/53 passed (`DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      uv run pytest backend/tests/integration/db/test_rls_policies.py -v`).
+      Full backend suite with the same `DB_URL`: 411 passed (358 pre-existing
+      + 53 new), 0 failed. Confirmed zero leftover rows: queried
+      `SELECT count(*) FROM products WHERE slug LIKE 'funda-rls-%'` directly
+      via `docker exec supabase_db_SistemaGCELL psql` after the full test
+      run — 0 rows, confirming `db_conn`'s outer-transaction rollback
+      (unmodified, per D5/DD4) leaves the database exactly as it started.**
 
 ## Phase 4: RLS module, part B — PR 4 (service_role + storage)
 
