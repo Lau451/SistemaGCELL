@@ -8,6 +8,7 @@ connection -- both adapters live inside the one rollback-isolated
 transaction.
 """
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -48,6 +49,27 @@ async def make_persisted_variant_id(conn: asyncpg.Connection) -> object:
     )
     await PostgresProductRepository(conn).add(product)
     return product.variants[0].id
+
+
+async def insert_movement_at(
+    conn: asyncpg.Connection, variant_id, created_at: datetime, quantity_delta: int = 1
+) -> None:
+    """Direct SQL insert bypassing `PostgresStockMovementRepository.record`
+    (which never accepts `created_at` -- it's DB-assigned via `default
+    now()`). `created_at` is not touched by the append-only trigger, which
+    only rejects `UPDATE`/`DELETE`, so an explicit `INSERT` value is fine
+    and is the only way to control boundary timestamps deterministically in
+    these tests.
+    """
+    await conn.execute(
+        "INSERT INTO stock_movements (variant_id, movement_type, quantity_delta, "
+        "reason, created_at) VALUES ($1, $2, $3, $4, $5)",
+        variant_id,
+        "adjustment",
+        quantity_delta,
+        None,
+        created_at,
+    )
 
 
 async def test_record_persists_a_movement_row(db_conn) -> None:
@@ -268,6 +290,86 @@ async def test_list_for_variant_never_returns_another_variants_movements(db_conn
     )
 
     rows = await reader.list_for_variant(variant_a_id, limit=10, before_id=None)
+
+    assert len(rows) == 1
+    assert rows[0].variant_id == variant_a_id
+
+
+# ---------------------------------------------------------------------------
+# since/until date filtering (design.md DD1, D10, D11) --
+# admin-stock-movement-date-filter
+# ---------------------------------------------------------------------------
+
+
+async def test_list_for_variant_since_and_until_are_inclusive_of_boundary_rows(
+    db_conn,
+) -> None:
+    variant_id = await make_persisted_variant_id(db_conn)
+    reader = PostgresStockMovementHistoryReader(db_conn)
+    since = datetime(2026, 1, 10, tzinfo=UTC)
+    until = datetime(2026, 1, 20, tzinfo=UTC)
+    await insert_movement_at(db_conn, variant_id, since)  # exactly at since -- included
+    await insert_movement_at(db_conn, variant_id, until)  # exactly at until -- included
+    await insert_movement_at(
+        db_conn, variant_id, since - timedelta(seconds=1)
+    )  # before since -- excluded
+    await insert_movement_at(
+        db_conn, variant_id, until + timedelta(seconds=1)
+    )  # after until -- excluded
+
+    rows = await reader.list_for_variant(
+        variant_id, limit=10, before_id=None, since=since, until=until
+    )
+
+    assert {row.created_at for row in rows} == {since, until}
+
+
+async def test_list_for_variant_range_and_before_id_predicate_compose_without_gaps(
+    db_conn,
+) -> None:
+    variant_id = await make_persisted_variant_id(db_conn)
+    reader = PostgresStockMovementHistoryReader(db_conn)
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    since = base
+    until = base + timedelta(days=10)
+    for day in range(5):
+        await insert_movement_at(db_conn, variant_id, base + timedelta(days=day))
+    await insert_movement_at(db_conn, variant_id, base + timedelta(days=20))  # out of range
+
+    page_one = await reader.list_for_variant(
+        variant_id, limit=2, before_id=None, since=since, until=until
+    )
+    page_two = await reader.list_for_variant(
+        variant_id, limit=2, before_id=page_one[-1].id, since=since, until=until
+    )
+    page_three = await reader.list_for_variant(
+        variant_id, limit=2, before_id=page_two[-1].id, since=since, until=until
+    )
+
+    all_rows = page_one + page_two + page_three
+    all_ids = [row.id for row in all_rows]
+    assert len(all_ids) == 5  # all 5 in-range rows seen, the out-of-range row never appears
+    assert len(set(all_ids)) == 5  # no duplicates across pages
+    assert all_ids == sorted(all_ids, reverse=True)  # no gaps skipped
+
+
+async def test_list_for_variant_date_filter_is_scoped_to_the_requested_variant(
+    db_conn,
+) -> None:
+    variant_a_id = await make_persisted_variant_id(db_conn)
+    variant_b_id = await make_persisted_variant_id(db_conn)
+    reader = PostgresStockMovementHistoryReader(db_conn)
+    instant = datetime(2026, 1, 15, tzinfo=UTC)
+    await insert_movement_at(db_conn, variant_a_id, instant)
+    await insert_movement_at(db_conn, variant_b_id, instant)
+
+    rows = await reader.list_for_variant(
+        variant_a_id,
+        limit=10,
+        before_id=None,
+        since=instant - timedelta(days=1),
+        until=instant + timedelta(days=1),
+    )
 
     assert len(rows) == 1
     assert rows[0].variant_id == variant_a_id

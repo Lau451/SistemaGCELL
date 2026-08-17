@@ -685,7 +685,16 @@ async def get_admin_variant_stock_movement_history(
     pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
     limit: int = 20,
     before_id: int | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
 ) -> AdminStockMovementHistoryPageResponse:
+    # `since`/`until` are plain `datetime | None` params, not `Query(...)`
+    # validators -- design.md D6/D10: validation, normalization (naive ->
+    # UTC, midnight-`until` expansion) and the inverted-range rejection all
+    # live in `ListVariantStockMovementsUseCase`, caught by the existing
+    # `_execute_or_raise` `ValueError` branch below. FastAPI's own type
+    # coercion still 422s an unparseable `since`/`until` string before this
+    # function runs, same as today's `before_id`.
     async def _list() -> StockMovementPage:
         async with pool.acquire() as conn:
             use_case = ListVariantStockMovementsUseCase(
@@ -697,6 +706,8 @@ async def get_admin_variant_stock_movement_history(
                 variant_id=variant_id,
                 limit=limit,
                 before_id=before_id,
+                since=since,
+                until=until,
             )
 
     page = await _execute_or_raise(_list())

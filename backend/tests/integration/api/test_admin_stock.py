@@ -36,6 +36,7 @@ from gcell.products.domain.product import Product, ProductVariant
 from gcell.products.infrastructure.postgres_product_repository import (
     PostgresProductRepository,
 )
+from gcell.stock.application.exceptions import InvertedDateRangeError
 from gcell.stock.application.stock_movement_history_reader import RecordedStockMovement
 from gcell.stock.domain.stock_movement import MovementType, StockMovement
 from gcell.stock.infrastructure.postgres_stock_level_reader import PostgresStockLevelReader
@@ -434,7 +435,7 @@ def test_get_movement_history_for_variant_with_no_movements_returns_empty_page(
     async def fake_get_by_id(self, product_id):
         return product if product_id == product.id else None
 
-    async def fake_list_for_variant(self, variant_id, limit, before_id):
+    async def fake_list_for_variant(self, variant_id, limit, before_id, since=None, until=None):
         return []
 
     monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
@@ -462,7 +463,7 @@ def test_get_movement_history_limit_above_cap_is_clamped_not_rejected(monkeypatc
     async def fake_get_by_id(self, product_id):
         return product if product_id == product.id else None
 
-    async def fake_list_for_variant(self, variant_id, limit, before_id):
+    async def fake_list_for_variant(self, variant_id, limit, before_id, since=None, until=None):
         captured_limits.append(limit)
         return []
 
@@ -514,7 +515,7 @@ def test_get_movement_history_second_page_items_are_strictly_older_than_first_pa
     async def fake_get_by_id(self, product_id):
         return product if product_id == product.id else None
 
-    async def fake_list_for_variant(self, variant_id, limit, before_id):
+    async def fake_list_for_variant(self, variant_id, limit, before_id, since=None, until=None):
         rows = [m for m in all_movements if before_id is None or m.id < before_id]
         rows.sort(key=lambda m: m.id, reverse=True)
         return rows[:limit]
@@ -741,3 +742,148 @@ def test_list_stock_bulk_read_failure_returns_500_with_no_execute_or_raise(monke
         response = client.get("/admin/stock", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# since/until date filtering (design.md DD1, D10, D11) --
+# admin-stock-movement-date-filter
+# ---------------------------------------------------------------------------
+
+
+def test_get_movement_history_since_and_until_reach_the_use_case(monkeypatch) -> None:
+    variant = make_variant()
+    product = make_product(variants=[variant])
+    captured: list[tuple] = []
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    async def fake_list_for_variant(self, variant_id, limit, before_id, since=None, until=None):
+        captured.append((since, until))
+        return []
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresStockMovementHistoryReader, "list_for_variant", fake_list_for_variant
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/variants/{variant.id}/stock/movements"
+            "?since=2026-01-01T00:00:00%2B00:00&until=2026-01-31T23:59:59.999999%2B00:00",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert captured == [
+        (
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 31, 23, 59, 59, 999999, tzinfo=UTC),
+        )
+    ]
+
+
+def test_get_movement_history_omitting_since_and_until_reproduces_current_response(
+    monkeypatch,
+) -> None:
+    variant = make_variant()
+    product = make_product(variants=[variant])
+    captured: list[tuple] = []
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    async def fake_list_for_variant(self, variant_id, limit, before_id, since=None, until=None):
+        captured.append((since, until))
+        return []
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresStockMovementHistoryReader, "list_for_variant", fake_list_for_variant
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/variants/{variant.id}/stock/movements",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "next_before_id": None}
+    assert captured == [(None, None)]
+
+
+def test_get_movement_history_inverted_range_returns_422_with_message_from_str_exc(
+    monkeypatch,
+) -> None:
+    variant = make_variant()
+    product = make_product(variants=[variant])
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    token = make_valid_admin_token()
+    since = datetime(2026, 8, 20, tzinfo=UTC)
+    until = datetime(2026, 8, 10, tzinfo=UTC)
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/variants/{variant.id}/stock/movements"
+            "?since=2026-08-20T00:00:00%2B00:00&until=2026-08-10T00:00:00%2B00:00",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": str(InvertedDateRangeError(since, until))}
+
+
+def test_get_movement_history_malformed_since_returns_422_not_500(monkeypatch) -> None:
+    variant = make_variant()
+    product = make_product(variants=[variant])
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product.id}/variants/{variant.id}/stock/movements"
+            "?since=not-a-date",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 422
+
+
+def test_get_movement_history_foreign_variant_with_inverted_range_returns_404_not_422(
+    monkeypatch,
+) -> None:
+    product_a = make_product()
+    product_b = make_product()
+
+    async def fake_get_by_id(self, product_id):
+        return product_a if product_id == product_a.id else None
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.get(
+            f"/admin/products/{product_a.id}/variants/{product_b.variants[0].id}"
+            "/stock/movements"
+            "?since=2026-08-20T00:00:00%2B00:00&until=2026-08-10T00:00:00%2B00:00",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "not_found"}

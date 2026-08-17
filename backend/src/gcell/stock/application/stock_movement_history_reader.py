@@ -39,5 +39,10 @@ class RecordedStockMovement:
 
 class StockMovementHistoryReader(Protocol):
     async def list_for_variant(
-        self, variant_id: UUID, limit: int, before_id: int | None
+        self,
+        variant_id: UUID,
+        limit: int,
+        before_id: int | None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[RecordedStockMovement]: ...

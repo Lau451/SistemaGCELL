@@ -23,6 +23,7 @@ from gcell.products.domain.product import Product, ProductVariant
 from gcell.products.infrastructure.in_memory_product_repository import (
     InMemoryProductRepository,
 )
+from gcell.stock.application.exceptions import InvertedDateRangeError
 from gcell.stock.application.list_variant_stock_movements import (
     ListVariantStockMovementsUseCase,
 )
@@ -38,9 +39,9 @@ class _SpyingHistoryReader(InMemoryStockMovementHistoryReader):
         super().__init__(movements)
         self.calls: list[tuple] = []
 
-    async def list_for_variant(self, variant_id, limit, before_id):
-        self.calls.append((variant_id, limit, before_id))
-        return await super().list_for_variant(variant_id, limit, before_id)
+    async def list_for_variant(self, variant_id, limit, before_id, since=None, until=None):
+        self.calls.append((variant_id, limit, before_id, since, until))
+        return await super().list_for_variant(variant_id, limit, before_id, since, until)
 
 
 def make_variant(color: str = "Negro") -> ProductVariant:
@@ -129,7 +130,7 @@ async def test_limit_is_clamped_and_requested_as_limit_plus_one(
     kwargs = {} if requested_limit is None else {"limit": requested_limit}
     await use_case.execute(product_id=product.id, variant_id=variant.id, **kwargs)
 
-    assert reader.calls == [(variant.id, expected_effective_limit + 1, None)]
+    assert reader.calls == [(variant.id, expected_effective_limit + 1, None, None, None)]
 
 
 async def test_exactly_limit_movements_yields_no_next_cursor() -> None:
@@ -172,3 +173,101 @@ async def test_variant_with_no_movements_returns_empty_list_and_no_cursor() -> N
 
     assert page.items == []
     assert page.next_before_id is None
+
+
+# ---------------------------------------------------------------------------
+# since/until date filtering (design.md DD1, D10, D11) --
+# admin-stock-movement-date-filter
+# ---------------------------------------------------------------------------
+
+
+async def test_omitting_since_and_until_reproduces_todays_exact_call_shape() -> None:
+    product_repository = InMemoryProductRepository()
+    variant = make_variant()
+    product = await make_persisted_product(product_repository, variants=[variant])
+    use_case, reader = make_use_case(product_repository=product_repository)
+
+    await use_case.execute(product_id=product.id, variant_id=variant.id)
+
+    assert reader.calls == [(variant.id, 21, None, None, None)]
+
+
+async def test_naive_since_and_until_are_normalized_to_utc() -> None:
+    product_repository = InMemoryProductRepository()
+    variant = make_variant()
+    product = await make_persisted_product(product_repository, variants=[variant])
+    use_case, reader = make_use_case(product_repository=product_repository)
+    naive_since = datetime(2026, 8, 1, 10, 30)
+    naive_until = datetime(2026, 8, 15, 10, 30)  # not midnight -- no expansion
+
+    await use_case.execute(
+        product_id=product.id, variant_id=variant.id, since=naive_since, until=naive_until
+    )
+
+    _, _, _, called_since, called_until = reader.calls[0]
+    assert called_since == naive_since.replace(tzinfo=UTC)
+    assert called_until == naive_until.replace(tzinfo=UTC)
+
+
+async def test_naive_until_at_exact_midnight_expands_to_end_of_day() -> None:
+    product_repository = InMemoryProductRepository()
+    variant = make_variant()
+    product = await make_persisted_product(product_repository, variants=[variant])
+    use_case, reader = make_use_case(product_repository=product_repository)
+    naive_midnight_until = datetime(2026, 8, 15, 0, 0, 0, 0)
+
+    await use_case.execute(
+        product_id=product.id, variant_id=variant.id, until=naive_midnight_until
+    )
+
+    _, _, _, _, called_until = reader.calls[0]
+    assert called_until == datetime(2026, 8, 15, 23, 59, 59, 999999, tzinfo=UTC)
+
+
+async def test_since_equal_to_until_is_valid_not_inverted() -> None:
+    product_repository = InMemoryProductRepository()
+    variant = make_variant()
+    product = await make_persisted_product(product_repository, variants=[variant])
+    use_case, reader = make_use_case(product_repository=product_repository)
+    instant = datetime(2026, 8, 15, 10, 0, tzinfo=UTC)
+
+    page = await use_case.execute(
+        product_id=product.id, variant_id=variant.id, since=instant, until=instant
+    )
+
+    assert page.items == []
+
+
+async def test_since_after_until_raises_inverted_date_range_error() -> None:
+    product_repository = InMemoryProductRepository()
+    variant = make_variant()
+    product = await make_persisted_product(product_repository, variants=[variant])
+    use_case, reader = make_use_case(product_repository=product_repository)
+    since = datetime(2026, 8, 20, tzinfo=UTC)
+    until = datetime(2026, 8, 10, tzinfo=UTC)
+
+    with pytest.raises(InvertedDateRangeError):
+        await use_case.execute(
+            product_id=product.id, variant_id=variant.id, since=since, until=until
+        )
+
+    assert reader.calls == []
+
+
+async def test_ownership_guard_runs_before_the_inverted_range_check() -> None:
+    product_repository = InMemoryProductRepository()
+    product = await make_persisted_product(product_repository)
+    other_product = await make_persisted_product(product_repository)
+    use_case, reader = make_use_case(product_repository=product_repository)
+    since = datetime(2026, 8, 20, tzinfo=UTC)
+    until = datetime(2026, 8, 10, tzinfo=UTC)
+
+    with pytest.raises(VariantNotFoundError):
+        await use_case.execute(
+            product_id=product.id,
+            variant_id=other_product.variants[0].id,
+            since=since,
+            until=until,
+        )
+
+    assert reader.calls == []

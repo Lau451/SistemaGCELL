@@ -13,6 +13,7 @@ is passed through as-is; clamping and the `limit + 1` trim both live in
 `ListVariantStockMovementsUseCase`, never here.
 """
 
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
@@ -23,7 +24,10 @@ from gcell.stock.domain.stock_movement import MovementType
 _SELECT_HISTORY = """
     SELECT id, variant_id, movement_type, quantity_delta, reason, created_at
     FROM stock_movements
-    WHERE variant_id = $1 AND ($2::bigint IS NULL OR id < $2)
+    WHERE variant_id = $1
+      AND ($2::bigint IS NULL OR id < $2)
+      AND ($4::timestamptz IS NULL OR created_at >= $4)
+      AND ($5::timestamptz IS NULL OR created_at <= $5)
     ORDER BY id DESC
     LIMIT $3
 """
@@ -34,9 +38,16 @@ class PostgresStockMovementHistoryReader:
         self._conn = conn
 
     async def list_for_variant(
-        self, variant_id: UUID, limit: int, before_id: int | None
+        self,
+        variant_id: UUID,
+        limit: int,
+        before_id: int | None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[RecordedStockMovement]:
-        rows = await self._conn.fetch(_SELECT_HISTORY, variant_id, before_id, limit)
+        rows = await self._conn.fetch(
+            _SELECT_HISTORY, variant_id, before_id, limit, since, until
+        )
         return [
             RecordedStockMovement(
                 id=row["id"],
