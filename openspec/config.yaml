@@ -28,7 +28,7 @@ testing:
     command: null
   quality_tools:
     linter: "eslint / ruff"
-    type_checker: "tsc --noEmit"
+    type_checker: "next build --webpack (Next-integrated tsc; no standalone tsc script)"
     formatter: "ruff format"
   note: >
     Two independent stacks, two pinned commands — run both sequentially (or
