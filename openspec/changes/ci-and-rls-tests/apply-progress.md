@@ -257,5 +257,10 @@ Contracts — nothing improvised.
   — confirms the previously-dormant DB-backed files are healthy against a
   real Postgres before trusting the CI-only bootstrap stub.
 
-**Task 2.6 (live verification)**: pending — requires pushing to a real
-GitHub Actions run, same "push and verify" pattern as PR 1.
+**Task 2.6 (live verification)**: pushed (`2932d03` code, `31e2285` docs).
+Run 32038510858 went fully green on both jobs on the **first** push — no
+latent bugs this time, unlike PR 1. The `pytest` step log reads `358
+passed, 2 warnings in 4.18s`, zero skips, exactly matching the local
+`DB_URL`-set sanity run. Confirms the ~15 previously-dormant DB-integration
+test files execute for real in CI now. No newly-surfaced failure, so no
+follow-up needed per design's Risks section.

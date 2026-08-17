@@ -110,10 +110,14 @@ though it is not production code).
       and a "Replay supabase/migrations" step
       (`for f in supabase/migrations/*.sql; do psql -f "$f"; done`) — exact
       shape from design.md's Interfaces/Contracts.
-- [ ] 2.6 Verify in a real PR/dispatch run: `db_pool` no longer skips — the
+- [x] 2.6 Verify in a real PR/dispatch run: `db_pool` no longer skips — the
       ~15 pre-existing DB-integration files execute for real. Per design's
       Risks: fix a newly-surfaced failure only if it touches nothing under
       `backend/src/`; otherwise document as a follow-up, do not expand scope.
+      **Result: run 32038510858, `pytest` step: `358 passed, 2 warnings in
+      4.18s`, zero skips, zero failures — matches the local
+      `DB_URL`-set sanity run exactly. First push went green with no
+      newly-surfaced failures; no follow-up needed.**
 
 ## Phase 3: RLS module, part A — PR 3 (read boundary)
 
