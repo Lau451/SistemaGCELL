@@ -239,6 +239,13 @@ though it is not production code).
       "confirm CI actually runs it" half of D4 is **deferred to the
       orchestrator** — this batch has no GitHub push/dispatch access,
       same pattern as PR1's task 1.4.**
+      **Orchestrator live-CI confirmation (D4, closes the deferral above):**
+      pushed PR3+PR4 together (commits `6c8e3cb`, `574c88c`, `afff8d8`,
+      `a83417e`). GitHub Actions run 32040002913 went fully green on both
+      jobs on the **first** push — no latent bugs this time (unlike PR1).
+      `pytest` step log: `422 passed, 2 warnings in 5.85s`, exactly matching
+      the local run — confirms all 64 RLS tests (Part A + Part B) execute
+      for real in CI, closing D4.
 
 ## Phase 5: Final regression + delivery
 

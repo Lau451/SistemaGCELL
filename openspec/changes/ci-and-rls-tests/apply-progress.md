@@ -657,3 +657,28 @@ or any already-shipped Phase 1–3 file.
 24/28 total tasks complete (0.1, 1.1–1.4, 2.1–2.6, 3.1–3.7, 4.1–4.6). Phase 5
 (4 tasks: 5.1–5.4) remains — orchestrator's scope per the launch prompt, not
 this batch's.
+
+## PR 3 + PR 4 — Live CI Verification (orchestrator, post-apply)
+
+Independently re-verified both batches before committing (trust-but-verify):
+read the full diff of `test_rls_policies.py`, re-ran
+`DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres uv run
+pytest backend/tests/integration/db/test_rls_policies.py -v` (64 passed) and
+the full backend suite (422 passed), and confirmed zero leaked rows
+independently via `docker exec supabase_db_SistemaGCELL psql` — including
+confirming the pre-existing 4 `products`/5 `stock_movements` rows found were
+unrelated seed/manual-test data (none matched the `funda-rls-*`/`rls-test-*`
+naming convention every RLS test uses), and that the throwaway
+`rls_proof_no_bypass` role from task 4.1's RED proof left no trace.
+
+Committed as 4 separate commits (code/docs pairs per PR, matching PR1/PR2's
+pattern): `6c8e3cb` (PR3 code), `574c88c` (PR3 docs), `afff8d8` (PR4 code),
+`a83417e` (PR4 docs). Pushed all 4 together in one push (user's explicit
+"seguí con PR4 y después probá" — implement PR4, then push-and-verify both
+PR3 and PR4 together rather than pushing PR3 alone first).
+
+GitHub Actions run 32040002913 went **fully green on both jobs on the first
+push** — unlike PR1, no latent bugs surfaced this time. `pytest` step log:
+`422 passed, 2 warnings in 5.85s`, identical to the local run, closing D4
+("CI must run the new RLS tests") for real. Tasks 4.6 and the tasks.md
+Phase 4 section updated with this confirmation.
