@@ -1,0 +1,362 @@
+# Tasks: Content + AI Domains (Gemini-Assisted Product Copy)
+
+## Review Workload Forecast
+
+| Field | Value |
+|-------|-------|
+| Estimated changed lines | ~2500-3000 total across 11 work units (see per-unit column below) |
+| 400-line budget risk | High |
+| Chained PRs recommended | Yes |
+| Suggested split | 11 work units (below) — design.md's own 4 slices, sub-split per slice-1 blast radius and per adapter/use-case seam |
+| Delivery strategy | ask-on-risk |
+| Chain strategy | 11 sequential PRs direct to `main` — confirmed by user 2026-08-17, same pattern as `ci-and-rls-tests`/`admin-stock-movement-date-filter` |
+
+Decision needed before apply: Resolved
+Chained PRs recommended: Yes
+Chain strategy: 11 sequential PRs direct to `main`, each committed, pushed,
+and independently verified before the next begins
+400-line budget risk: High
+
+Rationale: design.md's own rollout table already calls slice 1 "still high
+400-line risk" and pre-authorizes a 1a/1b sub-split ("the migration + view +
+pinned-column/type alignment" vs "the backend write path and admin form").
+Verified against the File Changes table that even design's own 1b bundle
+(`product.py`, both use cases, both repository adapters, `admin.py` write
+models, `product-form.tsx`, `actions.ts`, adapter-parity + API integration
+tests) is itself ~500+ lines once admin-form UI is included — over budget on
+its own. Same pattern repeats in slice 4 (`content`): DD2's ports, DD1's
+`ObjectStorage.get`, two generate use cases, two new routes, and two admin UI
+triggers do not fit one PR either. Slice 3 (`ai`) splits cleanly along its own
+seam — port/config/guard (inert, ~250 lines) vs the `httpx` adapter + its
+mock-transport test suite (~350-400 lines, comparable in shape to
+`test_supabase_storage.py`). Net: 4 design slices become 11 independently
+green, independently revertible units. Units 1-5 carry **zero** Gemini
+dependency (design.md's own framing) and are safe to land, merge, and use in
+production before `GEMINI_API_KEY` exists anywhere. Units 6-11 are strictly
+sequential: `ai` (6-7) must exist before `content` can depend on it (8-11),
+and `content`'s two generation flows (text vs. image, units 9-10) split along
+DD1/D10's own text-vs-image-input seam before wiring (11) ties routes + admin
+UI triggers together.
+
+### Suggested Work Units
+
+| Unit | Goal | Likely PR | Est. lines | Gemini dep? | Focused test command | Runtime harness | Rollback boundary |
+|------|------|-----------|-----------|-------------|----------------------|------------------|--------------------|
+| 1 | Migration (`short_description` column + view append, D3/DD7) + pinned frontend column/type contract only — no rendering behavior | PR 1 | ~90-130 | No | `npm --prefix frontend test -- columns queries` ; `uv run --project backend pytest tests/integration/db/test_rls_policies.py -v -k catalog_products` | Local `supabase start`; replay migration, `SELECT` the view directly, confirm `anon` still reads it | Revert the migration file + `create or replace view` back to `20260811000000`'s definition; revert `columns.ts`/`types.ts`; no other unit depends on the column existing yet (all reads are still null) |
+| 2 | Backend write path: `Product.description`/`short_description`, `create`/`update`/`register` use cases, both repository adapters, `admin.py` request/response models | PR 2 (base = PR 1) | ~280-360 | No | `uv run --project backend pytest tests/unit/products tests/integration/db/test_product_repository.py tests/integration/api/test_admin_products.py -v` | Local Supabase Postgres via `db_pool`; `fastapi.testclient` | Revert `product.py`, both use cases, both adapters, `admin.py`'s read/write model diff; column stays null exactly as PR 1 left it |
+| 3 | Admin product form: two editable copy fields, hand-typed only | PR 3 (base = PR 2) | ~150-200 | No | `npm --prefix frontend test -- product-form` | `npm run dev`; manual create/edit with `GEMINI_API_KEY` unset (spec scenario) | Revert `product-form.tsx`/`actions.ts` diff; PR 2's API still works via direct calls |
+| 4 | Public catalog listing renders the blurb | PR 4 (base = PR 2, independent of PR 3) | ~150-200 | No | `npm --prefix frontend test -- catalog-listing-content product-card queries` | `npm run dev`; view `/` with a product that has/lacks `short_description` | Revert `derive.ts`, `route.ts`, `catalog-listing-content.tsx`, `product-card.tsx`, RLS test extension; listing renders no copy again exactly as today |
+| 5 | Alt-text update path (DD3): port method, use case, `PATCH` route, editable field in `image-manager.tsx` | PR 5 (base = PR 1, independent of PR 2-4) | ~220-280 | No | `uv run --project backend pytest tests/unit/products/test_update_product_image_alt_text.py tests/integration/api/test_admin_products.py -v -k alt_text` ; `npm --prefix frontend test -- image-manager` | Local Supabase Postgres; `npm run dev` manual alt-text edit on an existing image | Revert `image_repository.py`, both adapters' `update_alt_text`, `update_product_image_alt_text.py`, the `PATCH` route in `admin.py`, `image-manager.tsx` diff; upload-time alt text still works |
+| 6 | `ai` domain scaffold: port, pure domain type, `GEMINI_API_KEY`/`require_gemini`, DD5 architecture test, `.env.example` | PR 6 (base = PR 1 or later; no dependency on 2-5) | ~230-260 | Config only, no live call | `uv run --project backend pytest backend/tests/architecture/test_domain_dependencies.py backend/tests/architecture/test_frontend_service_role_boundary.py backend/tests/unit/shared/test_dependencies.py -v` | N/A — no adapter yet, no route reachable; guard proven via unit test only (design.md verified `test_domain_dependencies.py` green against today's tree before writing it) | Revert `generation.py`, `content_generator.py`, `config.py`/`dependencies.py` diffs, `test_domain_dependencies.py`, `.env.example`; nothing else references these yet |
+| 7 | `ai` domain adapter: `httpx` Gemini client, mock-transport tested | PR 7 (base = PR 6) | ~350-400 | Yes (code only — zero live calls, D8/DD4) | `uv run --project backend pytest backend/tests/unit/ai/test_gemini_content_generator.py -v` | **N/A — by design (DD4): CI carries zero secrets, adapter constructor takes `transport: httpx.AsyncBaseTransport \| None`, every test runs under `httpx.MockTransport`.** No live-network harness exists or should exist pre-key. | Revert `gemini_content_generator.py` + its test file; `ai` stays a working-but-unwired leaf domain (matches design's "inert until slice 4") |
+| 8 | `content` domain DD2 seam: narrow read-only ports + DTOs + products-backed adapter — wired to nothing | PR 8 (base = PR 2 + PR 5, needs both fields and alt-text port to exist) | ~180-220 | No | `uv run --project backend pytest backend/tests/unit/content/test_products_context_reader.py -v` | N/A — inert, no route calls it yet; in-memory products/image repositories only | Revert `product_context_reader.py`, `products_context_reader.py`, their tests; `content/` stays an empty-but-typed package |
+| 9 | `content` text-generation use case: `generate_product_copy.py`, `copy_draft.py` (caps/trim, D10), no-price assertion | PR 9 (base = PR 7 + PR 8) | ~260-320 | Yes (unit-tested via fake `ContentGenerator`) | `uv run --project backend pytest backend/tests/unit/content/test_generate_product_copy.py -v` | N/A — no route yet; fake port + fake reader only | Revert `copy_draft.py`, `generate_product_copy.py`, their tests; `ai`/`content` seam still proven independently by PR 7/8's own tests |
+| 10 | `content` image-generation use case: `generate_image_alt_text.py`, `ObjectStorage.get` (DD1) on both port and `SupabaseStorage` | PR 10 (base = PR 9) | ~220-280 | Yes (unit-tested) | `uv run --project backend pytest backend/tests/unit/content/test_generate_image_alt_text.py backend/tests/unit/shared/test_supabase_storage.py -v -k get` | Local Supabase Storage bucket for the `get()` integration test (404 → `ObjectStorageError` case needs a real object absence) | Revert `generate_image_alt_text.py`, `object_storage.py`'s `get`, `supabase_storage.py`'s `get`, their tests; `put`/`delete` untouched |
+| 11 | Wiring: two `POST .../generate` routes in `admin.py`, composition root, both admin "Generate" triggers, full-stack IDOR/401/503/no-write integration tests | PR 11 (base = PR 10 + PR 3 + PR 5) | ~320-400 | Yes — first slice reachable end-to-end | `uv run --project backend pytest backend/tests/integration/api/test_admin_content.py -v` ; `npm --prefix frontend test -- product-form image-manager` | Manual click-through against a **real** `GEMINI_API_KEY` (proposal's Dependencies: "sdd-apply cannot verify a live call without it" — optional, not blocking; 503-path is fully covered by tests with the key unset) | Revert the two routes + composition wiring + both UI triggers; `content`/`ai` stay fully built and tested but unreachable, exactly as PR 7-10 left them |
+
+## Phase 1: Schema + Frontend Contract (PR 1) — zero Gemini dependency
+
+- [ ] 1.1 RED `backend/tests/integration/db/test_rls_policies.py` — extend the
+      catalog-view assertion: `anon` selects `short_description` from
+      `catalog_products` and it is present (null) on an existing row.
+- [ ] 1.2 GREEN `supabase/migrations/<ts>_products_short_description.sql` —
+      `alter table products add column short_description text;` +
+      `create or replace view catalog_products with (security_invoker = false)
+      as select id, slug, name, description, created_at, short_description
+      from products where deleted_at is null;` (DD7 append-only, preserves
+      grants).
+- [ ] 1.3 Verify Requirement "Short_description defaults to null on existing
+      rows" and "Anon can still read the catalog view after the migration"
+      (`product-catalog-schema` spec) both pass against 1.1's extended test.
+- [ ] 1.4 RED `frontend/src/lib/catalog/queries.test.ts` (or equivalent
+      columns-conformance test) — `CATALOG_PRODUCT_COLUMNS` must include
+      `short_description`; existing `select("*")`-ban grep still passes.
+- [ ] 1.5 GREEN `frontend/src/lib/catalog/columns.ts` — append
+      `short_description` to `CATALOG_PRODUCT_COLUMNS` (DD7 column order:
+      after `created_at`).
+- [ ] 1.6 GREEN `frontend/src/lib/catalog/types.ts` — add
+      `short_description: string | null` to `CatalogProductRow`, matching
+      the view column-for-column.
+
+## Phase 2: Backend Write Path (PR 2, base = PR 1) — zero Gemini dependency
+
+- [ ] 2.1 RED `backend/tests/unit/products/test_product.py` — construct
+      `Product` without `description`/`short_description`: both default
+      `None`, construction does not fail (spec: "Description fields default
+      to None").
+- [ ] 2.2 GREEN `backend/src/gcell/products/domain/product.py` — add
+      `description: str | None = None`, `short_description: str | None =
+      None` after `variants`.
+- [ ] 2.3 RED extend adapter-parity suite (existing file covering
+      Postgres + in-memory) — round-trip both fields through
+      create/read/update; update changes only `short_description`,
+      `description` unchanged (spec scenarios).
+- [ ] 2.4 GREEN `backend/src/gcell/products/infrastructure/postgres_product_repository.py`
+      — add `p.description, p.short_description` to `_SELECT_COLUMNS`,
+      `_INSERT_PRODUCT`, `_UPDATE_PRODUCT_FIELDS`, `_rows_to_product`.
+- [ ] 2.5 GREEN `backend/src/gcell/products/infrastructure/in_memory_product_repository.py`
+      — mirror 2.4 for parity.
+- [ ] 2.6 GREEN `backend/src/gcell/products/application/{create_product,update_product,register_product}.py`
+      — carry both fields through as full-replacement scalars (like
+      `name`/`model`); `repository.py` docstring updated to note `update`
+      now persists both text fields.
+- [ ] 2.7 RED `backend/tests/integration/api/test_admin_products.py` —
+      create/update a product with both fields via the admin API; response
+      echoes both; omitting both on create leaves both null.
+- [ ] 2.8 GREEN `backend/src/gcell/api/admin.py` — add both fields to the
+      product write/response Pydantic models with `Field(max_length=160)`
+      (`short_description`) / `Field(max_length=4000)` (`description`) —
+      DD4's over-cap-save 422 policy.
+- [ ] 2.9 Verify `admin-product-management`/`product-persistence` spec
+      scenarios: "Product is created with only manually typed copy" (key
+      unset), "creatable with both fields blank", "editing updates both
+      fields independently".
+
+## Phase 3: Admin Product Form (PR 3, base = PR 2)
+
+- [ ] 3.1 RED `frontend/src/app/(admin)/admin/products/product-form.test.tsx`
+      — form renders two text inputs (`description`, `short_description`);
+      submitting with both blank succeeds; editing only one leaves the other
+      untouched in the submitted payload.
+- [ ] 3.2 GREEN `frontend/src/app/(admin)/admin/products/product-form.tsx`,
+      `actions.ts` — two editable, optional, hand-typeable fields; no Gemini
+      reference anywhere in this diff.
+- [ ] 3.3 Verify manually with `GEMINI_API_KEY` unset (spec scenario
+      precondition) via `npm run dev`.
+
+## Phase 4: Public Catalog Blurb Render (PR 4, base = PR 2)
+
+- [ ] 4.1 RED `frontend/src/lib/catalog/derive.test.ts` (or nearest
+      existing derive test) — `CatalogListingCard.shortDescription` derives
+      from the row's `short_description`.
+- [ ] 4.2 GREEN `frontend/src/lib/catalog/derive.ts` — add
+      `shortDescription` to the derived card shape.
+- [ ] 4.3 GREEN `frontend/src/app/api/catalog/route.ts` — add
+      `shortDescription` to `CatalogListItem`.
+- [ ] 4.4 RED `frontend/src/app/(public)/__tests__/catalog-listing-content.test.tsx`
+      (or `product-card.test.tsx`) — blurb renders when present (spec
+      scenario "Listing renders the blurb when present"); renders cleanly,
+      no broken placeholder, when null (spec scenario "Listing renders
+      cleanly when the blurb is absent").
+- [ ] 4.5 GREEN `frontend/src/app/(public)/catalog-listing-content.tsx`,
+      `components/catalog/product-card.tsx` — render the blurb with
+      `line-clamp-2` (DD4: never assumes the 160-char cap server-side).
+- [ ] 4.6 Confirm `CATALOG_PRODUCT_COLUMNS`, `CatalogProductRow`, and the
+      view (Phase 1) still agree column-for-column; re-run the
+      `select("*")` grep guard.
+
+## Phase 5: Alt-Text Update Path (PR 5, base = PR 1) — zero Gemini dependency
+
+- [ ] 5.1 RED `backend/tests/unit/products/test_update_product_image_alt_text.py`
+      — updates `alt_text` on an existing image, no other field changes
+      (spec scenario); a cross-parent `image_id` (product A referencing
+      product B's image) → `ImageNotFoundError`/404, `alt_text` unchanged on
+      either image (spec scenario, and design's Threat-Matrix IDOR row).
+- [ ] 5.2 GREEN `backend/src/gcell/products/application/image_repository.py`
+      — add `update_alt_text(image_id, alt_text)` port method.
+- [ ] 5.3 GREEN `backend/src/gcell/products/infrastructure/{postgres,in_memory}_product_image_repository.py`
+      — implement `update_alt_text`; 0 affected rows → `ImageNotFoundError`.
+- [ ] 5.4 GREEN `backend/src/gcell/products/application/update_product_image_alt_text.py`
+      — `get_by_id` → `image is None or image.product_id != product_id` →
+      `ImageNotFoundError` (reuses the existing ownership-guard pattern
+      verbatim, D4).
+- [ ] 5.5 RED `backend/tests/integration/api/test_admin_products.py` — `PATCH
+      /admin/products/{id}/images/{image_id}` 200 on success; 404 on
+      cross-parent/unknown id; 401 with no `Authorization` header **before**
+      any 503 check (spec scenario "Unauthenticated alt-text update is
+      rejected", Threat-Matrix Routing row); 422 on a body missing
+      `alt_text`.
+- [ ] 5.6 GREEN `backend/src/gcell/api/admin.py` — new `PATCH` route, guards
+      in order `verify_admin_jwt` (401) → `require_db_pool` (503), no
+      `require_storage` (DD3: no Storage object touched here).
+- [ ] 5.7 RED `frontend/src/app/(admin)/admin/products/image-manager.test.tsx`
+      — alt text is editable on an already-uploaded image.
+- [ ] 5.8 GREEN `frontend/src/app/(admin)/admin/products/image-manager.tsx`
+      — editable alt-text field wired to the new `PATCH` route.
+
+## Phase 6: `ai` Domain Scaffold (PR 6) — no live Gemini call
+
+- [ ] 6.1 RED `backend/tests/architecture/test_domain_boundary.py`-style new
+      assertion (or extend it) — `ai/domain/generation.py` imports nothing
+      banned (spec `gemini-generation`: "Domain boundary test passes for
+      ai").
+- [ ] 6.2 GREEN `backend/src/gcell/ai/domain/generation.py` — pure:
+      `ImagePart`, `SUPPORTED_IMAGE_MIMES`. Zero banned imports.
+- [ ] 6.3 GREEN `backend/src/gcell/ai/application/content_generator.py` —
+      `ContentGenerator` Protocol (`generate_json`), `GenerationError`,
+      `GenerationRefusedError`.
+- [ ] 6.4 RED `backend/tests/unit/shared/test_dependencies.py` (extend) —
+      `require_gemini()` raises the 503-mapped error when
+      `GEMINI_API_KEY` is unset; a configured key passes through (spec
+      "Generate endpoint returns 503 without a key").
+- [ ] 6.5 GREEN `backend/src/gcell/shared/infrastructure/config.py` —
+      `gemini_api_key()`, `gemini_model()` (module constant
+      `"gemini-2.5-flash"`, optional `GEMINI_MODEL` env override, DD4).
+- [ ] 6.6 GREEN `backend/src/gcell/shared/infrastructure/dependencies.py` —
+      `GeminiCredentials` + `require_gemini()` → `503 gemini_unavailable`.
+- [ ] 6.7 RED `backend/tests/architecture/test_domain_dependencies.py` (new,
+      DD5) — write the full `ALLOWED_EDGES` map (`products: set()`,
+      `stock: {products}`, `content: {ai, products}`, `ai: set()`,
+      `recommendation: set()`, `shared: set()`); run against today's tree
+      first to confirm it is green with zero `content`/`ai` cross-imports
+      yet (design.md verified this before writing the test).
+- [ ] 6.8 GREEN — no production code change needed for 6.7 to pass; commit
+      the test as the executable form of D9's directionality rule.
+- [ ] 6.9 RED extend `backend/tests/architecture/test_frontend_service_role_boundary.py`
+      — parametrize the guard over `("SERVICE_ROLE", "GEMINI")` (spec
+      "Frontend has zero Gemini references").
+- [ ] 6.10 GREEN — confirm 6.9 passes with zero code changes (no Gemini
+      token exists under `frontend/` yet); this is a regression guard for
+      Phase 3/5/11's frontend diffs.
+- [ ] 6.11 GREEN `.env.example` (new) — `GEMINI_API_KEY=` name only, no
+      value; matches `config.py`'s existing reference.
+
+## Phase 7: `ai` Domain Adapter (PR 7, base = PR 6)
+
+- [ ] 7.1 RED `backend/tests/unit/ai/test_gemini_content_generator.py` (new,
+      mirrors `test_supabase_storage.py`) — request body carries
+      `responseSchema` + `inline_data` when an `ImagePart` is given, omitted
+      when `image=None`; success path parses `candidates[0].content.parts[0].text`
+      as JSON; 4xx/5xx → `GenerationError`; `httpx.TimeoutException` →
+      `GenerationError`; `promptFeedback.blockReason` →
+      `GenerationRefusedError`; non-JSON/malformed text → `GenerationError`;
+      handler call count == 1 (no retry, DD4 / Threat-Matrix "Process
+      integration" row); `GEMINI_API_KEY` appears only in the `x-goog-api-key`
+      request header, never in a raised exception's message (Threat-Matrix
+      "Secret exposure" row).
+- [ ] 7.2 GREEN `backend/src/gcell/ai/infrastructure/gemini_content_generator.py`
+      — thin `httpx` adapter, constructor-injected
+      `transport: httpx.AsyncBaseTransport | None`, `httpx.Timeout(30.0,
+      connect=5.0)`, `POST {base}/v1beta/models/{model}:generateContent`.
+- [ ] 7.3 Verify `gemini-generation` spec scenarios: "Adapter tests run
+      offline" (zero network calls under `httpx.MockTransport`), "Gemini
+      call failure surfaces as an error" (never `200` with an empty draft).
+
+## Phase 8: `content` DD2 Seam (PR 8, base = PR 2 + PR 5)
+
+- [ ] 8.1 RED `backend/tests/unit/content/test_products_context_reader.py`
+      (new) — `photo_context` returns `None` for another product's image id
+      and for an unknown id (spec `admin-ai-content-authoring` /
+      Threat-Matrix "IDOR" row, DD2's ownership-via-query-scope design).
+- [ ] 8.2 GREEN `backend/src/gcell/content/application/product_context_reader.py`
+      — `ProductCopyContext` (name, model, colors — **no price/cost field**,
+      OQ2), `ProductPhotoContext`, `ProductContextReader` Protocol.
+- [ ] 8.3 GREEN `backend/src/gcell/content/infrastructure/products_context_reader.py`
+      — adapter over `ProductRepository`/`ProductImageRepository`
+      (`list_for_product` → pick `image_id`, D4: no SQL).
+- [ ] 8.4 Verify spec `admin-ai-content-authoring` "Content has no products
+      repository": `content/application/` depends on `ai` and on
+      `products` only through this adapter, never a write method.
+
+## Phase 9: `content` Text-Generation Use Case (PR 9, base = PR 7 + PR 8)
+
+- [ ] 9.1 RED `backend/tests/unit/content/test_copy_draft.py` — over-cap
+      output trims at the last word boundary within the cap (blurb 160,
+      body 1200 chars, DD4).
+- [ ] 9.2 GREEN `backend/src/gcell/content/domain/copy_draft.py` —
+      `ProductCopyDraft`, `AltTextDraft`, the three caps (160/1200/125),
+      `trim_to_cap`.
+- [ ] 9.3 RED `backend/tests/unit/content/test_generate_product_copy.py`
+      (fake `ContentGenerator` + fake `ProductContextReader`) — both fields
+      returned → draft (spec "One click yields both draft fields", exactly
+      one Gemini call, D10); one field blank/missing → `200`-shaped draft
+      with that field `null` (DD6 partial-output policy); both blank/missing
+      or non-JSON → `GenerationError`; **prompt string contains no price**
+      even with a product carrying variants of different prices (spec
+      "Price is absent from the generation input"); a product `name`
+      containing instruction-like text still yields schema-shaped output
+      that writes nothing (Threat-Matrix "Prompt injection" row).
+- [ ] 9.4 GREEN `backend/src/gcell/content/application/generate_product_copy.py`
+      — builds the `es-AR` prompt (name/model/colors only), calls
+      `ContentGenerator.generate_json` exactly once, applies per-field caps.
+- [ ] 9.5 Verify spec `admin-ai-content-authoring` "Generating copy does not
+      persist anything": the use case's only dependencies are
+      `ContentGenerator` and `ProductContextReader` — no repository import.
+
+## Phase 10: `content` Image-Generation Use Case (PR 10, base = PR 9)
+
+- [ ] 10.1 RED `backend/tests/unit/shared/test_supabase_storage.py` (extend)
+      — `get()` returns `StoredObject(data, content_type)` from the response
+      body/header; a 404 → `ObjectStorageError` (not silently swallowed,
+      unlike `delete`).
+- [ ] 10.2 GREEN `backend/src/gcell/shared/application/object_storage.py` —
+      `StoredObject` dataclass, `get(path) -> StoredObject` on the
+      `ObjectStorage` Protocol (DD1).
+- [ ] 10.3 GREEN `backend/src/gcell/shared/infrastructure/supabase_storage.py`
+      — `GET /object/{bucket}/{path}`, non-2xx → `ObjectStorageError`.
+- [ ] 10.4 RED `backend/tests/unit/content/test_generate_image_alt_text.py`
+      — one Gemini image-input call per invocation, targets exactly one
+      image (spec "Alt text generation targets one image"); returns a draft
+      `alt_text`, applies to no other image; blank/missing `alt_text` →
+      `GenerationError` (DD6: single-key schema, no partial-output leniency
+      for alt text).
+- [ ] 10.5 GREEN `backend/src/gcell/content/application/generate_image_alt_text.py`
+      — `photo_context` (Phase 8) → `ObjectStorage.get` (10.2) →
+      `ContentGenerator.generate_json` with an `ImagePart`.
+- [ ] 10.6 Verify spec "Generating alt text does not persist anything": no
+      repository/storage write call anywhere in this use case's dependency
+      graph.
+
+## Phase 11: Wiring — Routes + Admin UI Triggers (PR 11, base = PR 10 + PR 3 + PR 5)
+
+- [ ] 11.1 RED `backend/tests/integration/api/test_admin_content.py` (new) —
+      unauthenticated request to each new generate route → `401` **before**
+      any `503` (Threat-Matrix "Routing" row); `GEMINI_API_KEY` unset →
+      `503` on both generate routes, **no Gemini call attempted** (spec
+      "Generate endpoint returns 503 without a key"); with a key configured
+      and a mocked transport, generate-copy returns `200` with **zero** DB
+      row changes (assert before/after, spec "zero write side effect");
+      cross-parent `image_id` on the alt-text generate route → `404`, same
+      body shape as an unknown id (Threat-Matrix IDOR row, mirrors 5.1/5.5);
+      no route accepts more than one `product_id`/`image_id` per request
+      (spec "No bulk generate route exists").
+- [ ] 11.2 GREEN `backend/src/gcell/api/admin.py` — `POST
+      /admin/products/{id}/copy/generate` and `POST
+      /admin/products/{id}/images/{image_id}/alt-text/generate`; guard order
+      401 → `require_db_pool` 503 → (alt-text only) `require_storage` 503 →
+      `require_gemini` 503; `GenerationError` → `502 generation_failed`,
+      `GenerationRefusedError` → `502 generation_refused` in
+      `_execute_or_raise`; wire the DD2 adapter (Phase 8) and the Gemini
+      adapter (Phase 7) at the composition root.
+- [ ] 11.3 RED `frontend/src/app/(admin)/admin/products/product-form.test.tsx`
+      (extend) — "Generate copy" button calls the new endpoint and prefills
+      both fields **without** submitting the form (D5: no write on this
+      path).
+- [ ] 11.4 GREEN `frontend/src/app/(admin)/admin/products/product-form.tsx`,
+      `actions.ts` — add the "Generate copy" trigger calling
+      `POST .../copy/generate`; prefill only, existing Save button (Phase
+      3) remains the only write path.
+- [ ] 11.5 RED `frontend/src/app/(admin)/admin/products/image-manager.test.tsx`
+      (extend) — "Generate alt text" button calls the new endpoint and
+      prefills the alt-text input without submitting.
+- [ ] 11.6 GREEN `frontend/src/app/(admin)/admin/products/image-manager.tsx`
+      — add the "Generate alt text" trigger; existing PATCH save (Phase 5)
+      remains the only write path.
+- [ ] 11.7 Verify upload does not auto-trigger generation (spec "Upload
+      does not auto-trigger alt-text generation" — construction-only check,
+      no new code path connects upload to generate).
+- [ ] 11.8 Re-run 6.9/6.10's parametrized `test_frontend_service_role_boundary.py`
+      guard — confirm the new frontend diff still contains zero `GEMINI`
+      tokens.
+- [ ] 11.9 Full regression: `npm --prefix frontend test && uv run --project
+      backend pytest -q`; with `GEMINI_API_KEY` unset, confirm `/health`,
+      the full public catalog, and the full existing admin panel are
+      unaffected and only the two generate endpoints return `503` (spec
+      "Rest of the app is unaffected by a missing key").
+- [ ] 11.10 Optional manual verification against a real `GEMINI_API_KEY`
+      (proposal's Dependencies) — not required for merge; the 503 path is
+      already proven by 11.1/11.9.
+
+## Phase 12: Final Success-Criteria Sweep
+
+- [ ] 12.1 Confirm `backend/src/gcell/recommendation/` is unchanged (D1) —
+      zero diff.
+- [ ] 12.2 Confirm `backend/pyproject.toml` has no new runtime dependency
+      (D8) — `httpx` was already present.
+- [ ] 12.3 Confirm `CATALOG_PRODUCT_COLUMNS`, `CatalogProductRow`, and the
+      `catalog_products` view still agree column-for-column, and no query
+      anywhere uses `select("*")`.
+- [ ] 12.4 Confirm every Gemini call site is under `ai/infrastructure/`,
+      reachable only through an admin-authenticated route, and grep
+      `frontend/` for `GEMINI`/`generateContent`/Gemini SDK names returns
+      nothing.
