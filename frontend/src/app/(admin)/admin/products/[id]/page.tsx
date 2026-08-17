@@ -32,7 +32,18 @@
  * is a client-side fetch through the same proxy (design.md Open
  * Questions, consistent with proposal Q3's "one variant at a time").
  *
- * @see design.md "Data Flow"
+ * Reads `since`/`until` from `searchParams` (design.md DD2 — this page's
+ * `searchParams` is the single source of truth for the history-view
+ * date filter, mirroring `admin/stock/page.tsx`'s Decision 7
+ * `searchParams`-is-a-Promise + array-collapse normalization) and
+ * forwards them to the history proxy via a fresh `URLSearchParams` (the
+ * encoding gotcha: a raw `+HH:MM` offset in a query string decodes to a
+ * space if string-concatenated instead). An inverted range (`since`
+ * later than `until`) is rejected HERE, before any history fetch is
+ * issued — a page-level guard distinct from the backend's 422 for the
+ * same condition (D10).
+ *
+ * @see design.md "Data Flow", "DD1", "DD2", "D13"
  */
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
@@ -44,6 +55,7 @@ import {
   StockHistory,
   type AdminStockMovementPage,
 } from "../stock-history";
+import { isInvertedRange } from "../stock-history-dates";
 
 interface AdminProduct {
   id: string;
@@ -55,6 +67,21 @@ interface AdminProduct {
 
 interface EditProductPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+/**
+ * `searchParams` values are `string | string[] | undefined` (a repeated
+ * key yields an array) — take the first entry, then treat a blank/absent
+ * value as "no filter" (design.md DD4's "Shared param normalization",
+ * same rule `admin/stock/page.tsx`'s `collapseParam` applies, but
+ * `undefined`-preserving since `since`/`until` are optional wire values,
+ * not empty-string form inputs).
+ */
+function normalizeDateParam(
+  value: string | string[] | undefined,
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 async function fetchAdminProduct(id: string): Promise<AdminProduct | null> {
@@ -132,14 +159,29 @@ const EMPTY_STOCK_HISTORY: AdminStockMovementPage = {
 async function fetchAdminProductStockHistory(
   id: string,
   variantId: string,
+  since: string | undefined,
+  until: string | undefined,
 ): Promise<AdminStockMovementPage> {
   const headerList = await headers();
   const host = headerList.get("host");
   const protocol = headerList.get("x-forwarded-proto") ?? "http";
   const cookie = headerList.get("cookie") ?? "";
 
+  // Fresh `URLSearchParams` rebuild, never string concatenation — see this
+  // file's header docstring on the `+HH:MM`-decodes-to-a-space gotcha.
+  const query = new URLSearchParams();
+  if (since) {
+    query.set("since", since);
+  }
+  if (until) {
+    query.set("until", until);
+  }
+  const queryString = query.toString();
+
   const response = await fetch(
-    `${protocol}://${host}/api/admin/products/${id}/variants/${variantId}/stock/movements`,
+    `${protocol}://${host}/api/admin/products/${id}/variants/${variantId}/stock/movements${
+      queryString ? `?${queryString}` : ""
+    }`,
     {
       headers: { cookie },
       cache: "no-store",
@@ -155,8 +197,14 @@ async function fetchAdminProductStockHistory(
 
 export default async function EditProductPage({
   params,
+  searchParams,
 }: EditProductPageProps) {
   const { id } = await params;
+  const resolvedSearchParams = await searchParams;
+  const since = normalizeDateParam(resolvedSearchParams.since);
+  const until = normalizeDateParam(resolvedSearchParams.until);
+  const inverted = isInvertedRange(since, until);
+
   const product = await fetchAdminProduct(id);
 
   if (!product) {
@@ -166,9 +214,18 @@ export default async function EditProductPage({
   const images = await fetchAdminProductImages(product.id);
   const stock = await fetchAdminProductStock(product.id);
   const firstVariantId = product.variants[0]?.id;
-  const stockHistory = firstVariantId
-    ? await fetchAdminProductStockHistory(product.id, firstVariantId)
-    : EMPTY_STOCK_HISTORY;
+  // D10 / page-level guard (design.md DD1/DD2): an inverted range never
+  // reaches the history fetch — no request is issued at all, distinct
+  // from the backend's own 422 for the same condition.
+  const stockHistory =
+    firstVariantId && !inverted
+      ? await fetchAdminProductStockHistory(
+          product.id,
+          firstVariantId,
+          since,
+          until,
+        )
+      : EMPTY_STOCK_HISTORY;
   const updateAction = updateProductAction.bind(null, product.id);
 
   return (
@@ -188,11 +245,18 @@ export default async function EditProductPage({
         initialImages={images}
       />
       <StockManager productId={product.id} initialStock={stock} />
-      {firstVariantId && (
+      {firstVariantId && inverted && (
+        <p role="alert" className="text-destructive text-sm">
+          Start date is after end date.
+        </p>
+      )}
+      {firstVariantId && !inverted && (
         <StockHistory
           productId={product.id}
           variantId={firstVariantId}
           initialHistory={stockHistory}
+          since={since}
+          until={until}
         />
       )}
     </div>

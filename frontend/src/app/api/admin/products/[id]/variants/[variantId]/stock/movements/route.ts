@@ -8,12 +8,14 @@
  * mirroring the EXACT auth-gate-then-relay pattern already used by the
  * sibling `[id]/stock/route.ts` proxy.
  *
- * Only `limit` and `before_id` are forwarded, rebuilt into a fresh
- * `URLSearchParams` — NEVER `new URL(request.url).search` verbatim, which
- * would let a client inject arbitrary params into the backend URL
- * (design.md Decision 7).
+ * Only `limit`, `before_id`, `since` and `until` are forwarded, rebuilt
+ * into a fresh `URLSearchParams` — NEVER `new URL(request.url).search`
+ * verbatim, which would let a client inject arbitrary params into the
+ * backend URL (design.md Decision 7 / D9). `variant` is deliberately NOT
+ * allowlisted: it is a page-level view key ([id]/page.tsx resolves it to
+ * a path segment), not a backend query parameter.
  *
- * @see design.md "Data Flow" (READ), "Decision 7"
+ * @see design.md "Data Flow" (READ), "Decision 7", "D9"
  */
 import { NextResponse } from "next/server";
 import { adminBackendFetch } from "@/lib/admin/backend-fetch";
@@ -23,7 +25,12 @@ interface RouteContext {
 }
 
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store" } as const;
-const ALLOWED_QUERY_PARAMS = ["limit", "before_id"] as const;
+const ALLOWED_QUERY_PARAMS = [
+  "limit",
+  "before_id",
+  "since",
+  "until",
+] as const;
 
 export async function GET(request: Request, { params }: RouteContext) {
   const { id, variantId } = await params;

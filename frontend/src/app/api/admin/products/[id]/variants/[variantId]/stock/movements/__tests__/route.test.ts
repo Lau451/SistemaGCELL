@@ -5,8 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * proxy Route Handler for a variant's stock movement history. Mirrors
  * `[id]/stock/__tests__/route.test.ts`'s exact auth/error mocking
  * convention, plus the allowlisted query-param passthrough required by
- * design.md Decision 7: only `limit` and `before_id` are forwarded, rebuilt
- * into a fresh `URLSearchParams` — never `request.url`'s raw search string.
+ * design.md Decision 7 / D9: `limit`, `before_id`, `since` and `until`
+ * are forwarded, rebuilt into a fresh `URLSearchParams` — never
+ * `request.url`'s raw search string. `variant` is deliberately NOT
+ * allowlisted (design.md File Changes: it is a page-level view key, and
+ * the variant already lives in the path).
  */
 
 const ADMIN_BACKEND_FETCH = vi.fn();
@@ -87,6 +90,73 @@ describe("GET /api/admin/products/[id]/variants/[variantId]/stock/movements", ()
 
     expect(ADMIN_BACKEND_FETCH).toHaveBeenCalledWith(
       "/admin/products/p1/variants/v1/stock/movements?limit=5&before_id=42",
+    );
+  });
+
+  it("forwards limit, before_id, since and until — dropping a fifth injected param", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 200,
+      body: { items: [], next_before_id: null },
+    });
+
+    const GET = await importRoute();
+    await GET(
+      new Request(
+        "http://x/api/admin/products/p1/variants/v1/stock/movements?limit=5&before_id=42&since=2026-08-01T00%3A00%3A00.000000-03%3A00&until=2026-08-15T23%3A59%3A59.999999-03%3A00&evil=1",
+      ),
+      paramsFor("p1", "v1"),
+    );
+
+    expect(ADMIN_BACKEND_FETCH).toHaveBeenCalledWith(
+      "/admin/products/p1/variants/v1/stock/movements?limit=5&before_id=42&since=2026-08-01T00%3A00%3A00.000000-03%3A00&until=2026-08-15T23%3A59%3A59.999999-03%3A00",
+    );
+  });
+
+  it("drops an injected variant param — it is a page-level view key, not forwarded to the backend", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 200,
+      body: { items: [], next_before_id: null },
+    });
+
+    const GET = await importRoute();
+    await GET(
+      new Request(
+        "http://x/api/admin/products/p1/variants/v1/stock/movements?since=2026-08-01T00%3A00%3A00.000000-03%3A00&variant=v2",
+      ),
+      paramsFor("p1", "v1"),
+    );
+
+    expect(ADMIN_BACKEND_FETCH).toHaveBeenCalledWith(
+      "/admin/products/p1/variants/v1/stock/movements?since=2026-08-01T00%3A00%3A00.000000-03%3A00",
+    );
+  });
+
+  it("a raw +HH:MM offset survives the round trip through the fresh URLSearchParams rebuild", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 200,
+      body: { items: [], next_before_id: null },
+    });
+
+    const GET = await importRoute();
+    const incomingQuery = new URLSearchParams();
+    incomingQuery.set("since", "2026-08-01T00:00:00.000000+02:00");
+    await GET(
+      new Request(
+        `http://x/api/admin/products/p1/variants/v1/stock/movements?${incomingQuery.toString()}`,
+      ),
+      paramsFor("p1", "v1"),
+    );
+
+    const [forwardedPath] = ADMIN_BACKEND_FETCH.mock.calls[0];
+    // The raw offset must never appear unencoded — a literal space in its
+    // place is exactly the corruption a naive `request.url.search` forward
+    // (rather than a fresh `URLSearchParams` rebuild) would produce.
+    expect(forwardedPath).not.toContain(" ");
+    expect(ADMIN_BACKEND_FETCH).toHaveBeenCalledWith(
+      "/admin/products/p1/variants/v1/stock/movements?since=2026-08-01T00%3A00%3A00.000000%2B02%3A00",
     );
   });
 

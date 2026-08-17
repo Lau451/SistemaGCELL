@@ -31,8 +31,11 @@ vi.mock("next/navigation", () => ({
   },
   // `ImageManager` (Phase 7) calls `useRouter().refresh()` after a
   // mutation — this page's render tree now includes it, so the mock must
-  // cover both exports the module tree needs.
-  useRouter: () => ({ refresh: ROUTER_REFRESH }),
+  // cover both exports the module tree needs. `StockHistory`'s date
+  // filter (Phase 5-8) additionally needs `usePathname`/`useSearchParams`.
+  useRouter: () => ({ refresh: ROUTER_REFRESH, push: vi.fn() }),
+  usePathname: () => "/admin/products/p1",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 // `ImageManager` resolves thumbnail `src` via the same public-URL builder
@@ -50,8 +53,14 @@ async function importPage() {
   return mod.default;
 }
 
-function paramsFor(id: string) {
-  return { params: Promise.resolve({ id }) };
+function paramsFor(
+  id: string,
+  searchParams: Record<string, string | string[] | undefined> = {},
+) {
+  return {
+    params: Promise.resolve({ id }),
+    searchParams: Promise.resolve(searchParams),
+  };
 }
 
 describe("EditProductPage", () => {
@@ -185,5 +194,112 @@ describe("EditProductPage", () => {
 
     await expect(EditProductPage(paramsFor("missing"))).rejects.toThrow();
     expect(NOT_FOUND).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards since/until from searchParams via URLSearchParams to the movement-history fetch", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/images")) {
+          return { ok: true, json: () => Promise.resolve([]) } as Response;
+        }
+        if (url.endsWith("/stock")) {
+          return {
+            ok: true,
+            json: () =>
+              Promise.resolve([
+                { variant_id: "v1", color: "negro", quantity_on_hand: 5 },
+              ]),
+          } as Response;
+        }
+        if (url.includes("/variants/") && url.includes("/stock/movements")) {
+          return {
+            ok: true,
+            json: () => Promise.resolve({ items: [], next_before_id: null }),
+          } as Response;
+        }
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              id: "p1",
+              slug: "funda-iphone-15",
+              name: "Funda iPhone 15",
+              model: "iPhone 15",
+              variants: [
+                { id: "v1", color: "negro", price: "5000.00", cost: "2000.00" },
+              ],
+            }),
+        } as Response;
+      });
+
+    const EditProductPage = await importPage();
+    const jsx = await EditProductPage(
+      paramsFor("p1", {
+        since: "2026-08-01T00:00:00.000000-03:00",
+        until: "2026-08-15T23:59:59.999999-03:00",
+      }),
+    );
+    render(jsx);
+
+    const [historyUrl] = fetchSpy.mock.calls[3];
+    const historyUrlString = String(historyUrl);
+    expect(historyUrlString).toContain(
+      "/api/admin/products/p1/variants/v1/stock/movements?",
+    );
+    const query = new URLSearchParams(historyUrlString.split("?")[1]);
+    expect(query.get("since")).toBe("2026-08-01T00:00:00.000000-03:00");
+    expect(query.get("until")).toBe("2026-08-15T23:59:59.999999-03:00");
+  });
+
+  it("renders the inverted-range guard and issues no fetch to the movements endpoint when since is after until", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/images")) {
+          return { ok: true, json: () => Promise.resolve([]) } as Response;
+        }
+        if (url.endsWith("/stock")) {
+          return {
+            ok: true,
+            json: () =>
+              Promise.resolve([
+                { variant_id: "v1", color: "negro", quantity_on_hand: 5 },
+              ]),
+          } as Response;
+        }
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              id: "p1",
+              slug: "funda-iphone-15",
+              name: "Funda iPhone 15",
+              model: "iPhone 15",
+              variants: [
+                { id: "v1", color: "negro", price: "5000.00", cost: "2000.00" },
+              ],
+            }),
+        } as Response;
+      });
+
+    const EditProductPage = await importPage();
+    const jsx = await EditProductPage(
+      paramsFor("p1", {
+        since: "2026-08-20T00:00:00.000000-03:00",
+        until: "2026-08-10T23:59:59.999999-03:00",
+      }),
+    );
+    render(jsx);
+
+    expect(screen.getByText("Start date is after end date.")).toBeInTheDocument();
+    expect(screen.queryByText("Movement history")).not.toBeInTheDocument();
+    expect(
+      fetchSpy.mock.calls.some(([input]) =>
+        String(input).includes("/stock/movements"),
+      ),
+    ).toBe(false);
   });
 });

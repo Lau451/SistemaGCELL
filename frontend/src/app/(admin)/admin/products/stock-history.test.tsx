@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { presetRange } from "./stock-history-dates";
 
 /**
  * `StockHistory` — client component rendered below `StockManager` on the
@@ -11,7 +12,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * deviation from `stock-manager.tsx`'s "no local copy" convention, since an
  * append-in-place "Load more" list cannot be expressed by a server prop
  * alone).
+ *
+ * Date-range filter (design.md DD2/D13): the filter itself is URL-driven
+ * — a preset click or a date-input change pushes `?since=&until=` via
+ * `useRouter`, a real navigation, which is EXACTLY what produces the new
+ * `initialHistory` prop reference the pre-existing Decision 6 reset
+ * already handles. No new reset logic is written for the filter.
  */
+
+const ROUTER_PUSH = vi.fn();
+const ROUTER_REPLACE = vi.fn();
+let mockSearchParams = new URLSearchParams();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: ROUTER_PUSH, replace: ROUTER_REPLACE }),
+  usePathname: () => "/admin/products/p1",
+  useSearchParams: () => mockSearchParams,
+}));
 
 async function importStockHistory() {
   const mod = await import("./stock-history");
@@ -61,6 +78,8 @@ describe("StockHistory", () => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    vi.useRealTimers();
+    mockSearchParams = new URLSearchParams();
   });
 
   it("renders an empty state, not an error, when the variant has no movements", async () => {
@@ -143,7 +162,11 @@ describe("StockHistory", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not render a running-balance column or any type/date filter controls", async () => {
+  it("does not render a running-balance column or any movement-type filter control", async () => {
+    // Date-range filtering is now in scope (D3 reverses only the
+    // date-range half of the old MUST NOT clause) — the movement-type
+    // half and the no-balance clause stay locked and are still asserted
+    // here.
     const StockHistory = await importStockHistory();
 
     render(
@@ -158,12 +181,173 @@ describe("StockHistory", () => {
     expect(
       screen.queryByRole("combobox", { name: /type/i }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText(/date/i),
-    ).not.toBeInTheDocument();
   });
 
-  it("resets entries and cursor to page one when the initialHistory prop reference changes", async () => {
+  it("renders the date-range inputs and the three preset + Clear controls", async () => {
+    const StockHistory = await importStockHistory();
+
+    render(
+      <StockHistory
+        productId="p1"
+        variantId="v1"
+        initialHistory={PAGE_ONE}
+      />,
+    );
+
+    expect(screen.getByLabelText(/since/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/until/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^today$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /last 7 days/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /last 30 days/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument();
+  });
+
+  it('renders "No movements in the selected date range." when a filter is active and yields zero rows (D13)', async () => {
+    const StockHistory = await importStockHistory();
+
+    render(
+      <StockHistory
+        productId="p1"
+        variantId="v1"
+        initialHistory={EMPTY_PAGE}
+        since="2026-08-01T00:00:00.000000-03:00"
+        until="2026-08-15T23:59:59.999999-03:00"
+      />,
+    );
+
+    expect(
+      screen.getByText("No movements in the selected date range."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No movements recorded yet.")).not.toBeInTheDocument();
+  });
+
+  it('renders "No movements recorded yet." (unchanged copy) when no filter is active (D13)', async () => {
+    const StockHistory = await importStockHistory();
+
+    render(
+      <StockHistory
+        productId="p1"
+        variantId="v1"
+        initialHistory={EMPTY_PAGE}
+      />,
+    );
+
+    expect(screen.getByText("No movements recorded yet.")).toBeInTheDocument();
+  });
+
+  it("clicking the last-7-days preset pushes the URL with the exact presetRange('last7') query", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 15));
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(180);
+    const expected = presetRange("last7");
+    const StockHistory = await importStockHistory();
+
+    render(
+      <StockHistory
+        productId="p1"
+        variantId="v1"
+        initialHistory={PAGE_ONE}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /last 7 days/i }));
+
+    const expectedParams = new URLSearchParams();
+    expectedParams.set("since", expected.since);
+    expectedParams.set("until", expected.until);
+    expect(ROUTER_PUSH).toHaveBeenCalledWith(
+      `/admin/products/p1?${expectedParams.toString()}`,
+    );
+  });
+
+  it("changing the Since date input pushes the URL with the converted since param, preserving until", async () => {
+    const StockHistory = await importStockHistory();
+
+    render(
+      <StockHistory
+        productId="p1"
+        variantId="v1"
+        initialHistory={PAGE_ONE}
+        until="2026-08-15T23:59:59.999999-03:00"
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/since/i), {
+      target: { value: "2026-08-01" },
+    });
+
+    const call = ROUTER_PUSH.mock.calls.at(-1)?.[0] as string;
+    const pushedParams = new URLSearchParams(call.split("?")[1]);
+    expect(pushedParams.get("since")).toBe("2026-08-01T00:00:00.000000-03:00");
+    expect(pushedParams.get("until")).toBe("2026-08-15T23:59:59.999999-03:00");
+  });
+
+  it("clicking Clear pushes the URL with since/until removed but any other param preserved", async () => {
+    mockSearchParams = new URLSearchParams(
+      "since=2026-08-01T00%3A00%3A00.000000-03%3A00&until=2026-08-15T23%3A59%3A59.999999-03%3A00&foo=bar",
+    );
+    const user = userEvent.setup();
+    const StockHistory = await importStockHistory();
+
+    render(
+      <StockHistory
+        productId="p1"
+        variantId="v1"
+        initialHistory={PAGE_ONE}
+        since="2026-08-01T00:00:00.000000-03:00"
+        until="2026-08-15T23:59:59.999999-03:00"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /clear/i }));
+
+    const call = ROUTER_PUSH.mock.calls.at(-1)?.[0] as string;
+    const pushedParams = new URLSearchParams(call.split("?")[1] ?? "");
+    expect(pushedParams.has("since")).toBe(false);
+    expect(pushedParams.has("until")).toBe(false);
+    expect(pushedParams.get("foo")).toBe("bar");
+  });
+
+  it("handleLoadMore re-sends the current since/until on the next page fetch", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(PAGE_TWO),
+    } as Response);
+    const user = userEvent.setup();
+    const StockHistory = await importStockHistory();
+
+    render(
+      <StockHistory
+        productId="p1"
+        variantId="v1"
+        initialHistory={PAGE_ONE}
+        since="2026-08-01T00:00:00.000000-03:00"
+        until="2026-08-15T23:59:59.999999-03:00"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /load more/i }));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    });
+
+    const [calledUrl, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>)
+      .mock.calls[0];
+    const calledParams = new URLSearchParams(
+      String(calledUrl).split("?")[1],
+    );
+    expect(calledParams.get("before_id")).toBe("2");
+    expect(calledParams.get("since")).toBe("2026-08-01T00:00:00.000000-03:00");
+    expect(calledParams.get("until")).toBe("2026-08-15T23:59:59.999999-03:00");
+    expect(calledInit).toEqual({ cache: "no-store" });
+  });
+
+  it("resets entries and cursor to page one when the initialHistory prop reference changes (design.md Decision 6, reused unchanged — a filter-driven navigation re-runs [id]/page.tsx's server fetch and produces exactly this new reference; no new reset logic exists in this component)", async () => {
     const StockHistory = await importStockHistory();
 
     const { rerender } = render(
