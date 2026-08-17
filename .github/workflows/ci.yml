@@ -16,10 +16,35 @@ permissions:
 
 jobs:
   backend:
-    name: Backend (ruff + pytest)
+    name: Backend (ruff + pytest on ephemeral Postgres)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 10
+    env:
+      DB_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@v4
+
+      - name: Bootstrap Supabase-managed roles and storage surface
+        run: |
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/ci/00_supabase_roles.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/ci/01_storage_schema.sql
+
+      - name: Replay supabase/migrations
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "-- applying $f"
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
 
       - uses: astral-sh/setup-uv@v5
         with:
