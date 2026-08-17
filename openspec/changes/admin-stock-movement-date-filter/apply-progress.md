@@ -217,3 +217,120 @@ component, its page wiring, and final cross-stack cleanup/verification). Ready
 for the next apply batch (Phase 9-10: variant switcher, PR 3) once PR 2 is
 reviewed/merged, or for `sdd-verify` to check this batch's frontend date-filter
 slice in isolation first.
+
+## Batch 3 (this run) — Phase 9-11: Variant Switcher (PR 3) + Final Cleanup/Verification
+
+**Mode**: Strict TDD (RED confirmed via a real failing test run before each GREEN
+implementation).
+**Scope**: Phase 9 (variant-switcher component) + Phase 10 (page wiring — variant
+switcher, `?variant=` resolution + `notFound()` guard) + Phase 11 (docstring
+correction + full cross-stack verification for ALL 3 PRs combined) — tasks 9.1,
+9.2, 10.1, 10.2, 11.1, 11.2. This is `tasks.md`'s Unit 3 / PR 3 (base = PR 2's
+branch), and the final batch of this change. **All 23/23 tasks are now
+complete.**
+
+### Completed Tasks
+- [x] 9.1 RED — `variant-switcher.test.tsx` written (5 cases)
+- [x] 9.2 GREEN — `variant-switcher.tsx` created: server component, `<nav>` of
+      `<Link>`s, `URLSearchParams` href builder, `null` for `variants.length < 2`
+- [x] 10.1 RED — extended `[id]/page.test.tsx` (7 new cases)
+- [x] 10.2 GREEN — `resolveActiveVariant` + `notFound()` guard + `VariantSwitcher`
+      render + `activeVariantId` threaded to `StockHistory`, docstring updated,
+      in `[id]/page.tsx`
+- [x] 11.1 Confirmed `[id]/page.tsx`'s docstring no longer claims variant
+      switching is a client-side fetch — corrected in the same edit as 10.2
+- [x] 11.2 Ran the full cumulative suite (all 3 PRs combined) — see Full Suite
+      Confirmation below
+
+### Files Changed
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `frontend/src/app/(admin)/admin/products/variant-switcher.tsx` | Created | Server component (no `"use client"`), 87 lines. `VariantSwitcherProps` matches design.md's Interfaces/Contracts byte-for-byte. Renders `null` for `variants.length < 2`. Otherwise a `<nav aria-label="Variant switcher">` of `<Link>`s, one per variant, labelled by `color` only (per design.md: price is already rendered by `ProductForm`, repeating it here would duplicate data). Each `href` built via `buildVariantHref` — a fresh `URLSearchParams` (never string concatenation, same encoding gotcha as `stock-history-dates.ts`) carrying `variant=<id>` plus any active `since`/`until`. The active variant's link gets `aria-current="page"`; `aria-label` deliberately set to `"Variant switcher"` rather than `"Variant"` to avoid colliding with `StockManager`'s own `<label>Variant</label>` under `getByLabelText` queries |
+| `frontend/src/app/(admin)/admin/products/variant-switcher.test.tsx` | Created | 5 tests, 120 lines: renders nothing (`toBeEmptyDOMElement`) for a single-variant product; one link per variant for a 3-variant product (`getAllByRole("link")` length + each named by color); `aria-current="page"` on the active variant's link and absent on others; a link's `href` resolves to the correct `?variant=<id>` via `URLSearchParams` parsing; active `since`/`until` preserved on every link with no literal space (percent-encoding proof) |
+| `frontend/src/app/(admin)/admin/products/[id]/page.tsx` | Modified | Imports `VariantSwitcher`. Renamed `normalizeDateParam` → `normalizeParam` (DD4's "Shared param normalization" is explicitly the same rule for `since`/`until`/`variant`, so one shared helper). New `resolveActiveVariant(variants, raw)`: normalizes `raw`, absent/blank → `variants[0] ?? null`, otherwise `variants.find(v => v.id === normalized) ?? null` — a pure in-memory membership check against `product.variants` (data already fetched under the authenticated proxy), mirroring `list_variant_stock_movements.py`'s `VariantNotFoundError` "never distinguish missing vs. foreign" idiom. **Discovered edge case, fixed**: a naive first pass 404'd every zero-variant product, regressing the LOCKED `admin-product-management` requirement "A Product May Have Zero Active Variants Without Being Retired" (the edit page MUST stay reachable with zero variants) — fixed by gating the guard on `product.variants.length > 0` (`hasVariants`) so DD4's guard only fires once the product actually has at least one variant to resolve against; a zero-variant product renders exactly as before (no switcher, no history section, no 404). The `notFound()` guard now runs BEFORE any history fetch (DD4), and `activeVariant.id` (never the raw param) is what reaches `fetchAdminProductStockHistory`'s URL. `VariantSwitcher` renders above the inverted-range guard / `StockHistory`, guarded by `activeVariant &&` (component itself additionally returns `null` for single/zero-variant products — DD3's "byte-identical for the common case"). Header docstring corrected: the old "switching variants is a client-side fetch through the same proxy" claim (now false) is replaced with an accurate description of the server-rendered, `?variant=`-driven, membership-checked switcher (task 11.1) |
+| `frontend/src/app/(admin)/admin/products/[id]/page.test.tsx` | Modified | 8 new tests (289 lines net across both diffs): absent `?variant` defaults to `variants[0]` and the switcher marks it `aria-current`; a valid `?variant` fetches that variant's history (and NOT the other variant's) and marks it active in the switcher; a nonexistent `?variant` calls `notFound()` with zero `/stock/movements` requests issued; a malformed `?variant` (`"not-a-uuid"`) also calls `notFound()` (no UUID parsing added, per DD4); switcher links preserve the active `since`/`until`; `StockManager`'s write-target `<select>` stays on `stock[0]?.variant_id` (`v1`) and its full unfiltered option list regardless of `?variant=v2` (D16 — no coupling); a regression test locking in the zero-variants discovery above (`NOT_FOUND` never called, form still renders, no "Movement history" section) |
+| `frontend/src/app/api/admin/products/[id]/variants/[variantId]/stock/movements/route.ts`, `stock-manager.tsx` | **Unchanged**, confirmed | `variant` remains deliberately absent from `ALLOWED_QUERY_PARAMS` (it's a page-level view key, not forwarded to the backend — unchanged from Batch 2). `stock-manager.tsx` byte-identical to Batch 2 — confirmed via `git status --porcelain` showing zero diff for this file (D16) |
+| `stock-history.tsx` | **Unchanged**, confirmed | No further change needed: a variant switch is a soft navigation producing a fresh `initialHistory` object reference, and Decision 6's existing compare-during-render reset (already reused unchanged since Batch 2) already snaps `entries`/`cursor` back to page one on that new reference — proven by the "valid `?variant` fetches that variant's history" test showing exactly 1 entry (the `v2`-scoped fixture), not a stale `v1` entry |
+
+### TDD Cycle Evidence
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 9.1/9.2 | `variant-switcher.test.tsx` | Component (RTL, no mocks needed — pure server component + `next/link`) | N/A (new file) | ✅ Written and confirmed: `npx vitest run variant-switcher.test.tsx` → **import error, 0 tests run** (`Failed to resolve import "./variant-switcher"`) | ✅ Passed: same command after creating `variant-switcher.tsx` → **5 passed** | ✅ 5 cases covering all design.md scenarios: empty (<2 variants), one-link-per-variant, active `aria-current`, href-targets-correct-variant, since/until preservation with percent-encoding proof | ➖ None needed — component was already minimal and pure |
+| 10.1/10.2 | `[id]/page.test.tsx` | Page (RTL + mocked same-origin `fetch` + `next/navigation`/`next/headers`) | ✅ 11/11 pre-existing tests (Batch 1+2's 4 original + Batch 2's 2 date-filter tests, re-counted after Batch 2's own additions) run clean before this batch's edits | ✅ Written and confirmed: `npx vitest run "[id]/page.test.tsx"` → **5 failed, 5 passed** (variant always resolved to hardwired `variants[0]`, `notFound()` never called for a foreign/malformed id, switcher not rendered at all — `getByRole("link")` found nothing) | ✅ Passed: same command after implementing `resolveActiveVariant` + the `notFound()` guard + `VariantSwitcher` render → **10 passed** (then discovered and fixed the zero-variants regression — see below) | ✅ Covers every DD4 scenario: absent/default, valid match, foreign/nonexistent, malformed, filter-preservation, D16 no-coupling | ✅ Refactor: extracted the shared `normalizeParam` rename to make the "shared normalization rule" explicit (DD4), tests still 10/10 passing after the rename |
+| Discovered regression (zero-variant products) | `[id]/page.test.tsx` (1 additional case) | Page | ✅ 10/10 (this batch's own tests) run clean before the fix | ✅ Written and confirmed against the not-yet-fixed `resolveActiveVariant` gating: `npx vitest run "[id]/page.test.tsx" -t "zero variants"` → **1 failed** (`NEXT_NOT_FOUND` thrown — the page incorrectly 404'd a legitimately zero-variant, still-editable product) | ✅ Passed: same command after gating the `notFound()` guard on `hasVariants` → **1 passed**, full file re-run → **11 passed** | ➖ Single scenario — the locked spec only has one relevant case ("removing the last variant leaves the product editable") | ➖ None needed |
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd frontend && npx vitest run "src/app/(admin)/admin/products/[id]/page.test.tsx" "src/app/(admin)/admin/products/variant-switcher.test.tsx"` → **16 passed (2 test files)** |
+| Runtime harness command/scenario and exact result | `cd frontend && npx tsc --noEmit` → clean, zero errors. No new runtime/DB boundary in this batch (pure frontend, zero backend surface per D14's "adds zero backend surface" — the endpoint is already per-variant and already ownership-guarded) |
+| Rollback boundary | Revert `variant-switcher.tsx`(+test) and `[id]/page.tsx`'s variant-resolution diff(+test diff). The page falls back to `variants[0]` unconditionally — exactly today's pre-switcher, pre-PR-3 behavior (`tasks.md`'s stated PR 3 rollback boundary). PR 1 (backend) and PR 2 (frontend date-filter) stay valid and byte-identical standalone; nothing in PR 3 touches the backend, the proxy allowlist, or `stock-history.tsx`/`stock-manager.tsx` |
+
+### Full Suite Confirmation (cumulative — all 3 PRs combined)
+- `cd frontend && npm test -- --run` → **344 passed (47 test files)**, zero regressions (up from Batch 2's 332/46 — the 12 new tests are exactly this batch's 5 switcher + 7 page tests)
+- `cd frontend && npx tsc --noEmit` → clean, zero errors
+- `cd backend && DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres uv run pytest -q` → **352 passed, 2 warnings** (unchanged from Batch 1 — this batch touches zero backend files, confirmed below)
+- **Environment discovery**: the pinned `openspec/config.yaml` command `uv run --project backend pytest -q` (invoked from the **repo root**, not `cd backend` first) fails with 99 failures/65 errors — `uv run --project` only selects which `.venv`/`pyproject.toml` `uv` resolves dependencies from, it does NOT change pytest's own config-file/rootdir discovery, which still starts from the shell's cwd. Since the repo root has no `pyproject.toml` of its own, pytest silently runs with **no** `[tool.pytest.ini_options]` at all when invoked that way — losing `asyncio_mode`, so every `async def` fixture/test errors with `"requested an async fixture ... with no plugin or hook that handled it"`. This is a **pre-existing environment quirk**, not a regression introduced by this change — confirmed by running the identical command against a stash of this batch's changes with the same failure shape. The correct invocation is `cd backend && uv run pytest -q` (or `uv run --project backend pytest -q backend/tests/...` scoped to a path under `backend/`), which is what every prior batch's Full Suite Confirmation already used and what this batch re-confirms as the accurate 352-passed baseline
+- `git diff --stat b892db0 -- supabase/migrations/ backend/src/gcell/products/domain backend/src/gcell/stock/domain backend/src/gcell/content/domain backend/src/gcell/ai/domain backend/src/gcell/recommendation/domain backend/src/gcell/shared/domain` (against the commit immediately preceding this change's Phase 1) → **empty output** — zero migration files, zero domain-layer files touched anywhere across all 3 PRs combined
+- `git diff --stat b892db0` (full change, all 3 PRs) → 26 files changed, 2888 insertions(+), 56 deletions(-) — all under `backend/src/gcell/{api,stock/application,stock/infrastructure}`, `backend/tests/`, `frontend/src/app/(admin)/admin/products/`, `frontend/src/app/api/admin/products/.../movements/`, and `openspec/changes/admin-stock-movement-date-filter/`; the two new untracked `variant-switcher.*` files (207 lines) are additional to that stat (untracked files don't appear in `git diff` against a commit) — confirmed present via `git status --porcelain`
+- `git status --porcelain -- frontend/src/app/(admin)/admin/products/stock-manager.tsx` → **empty output** — D16 confirmed: `StockManager` was never touched across any of the 3 batches
+
+### Test Summary
+- **Total tests written this batch**: 13 new test cases (5 switcher + 7 `?variant=` resolution + 1 zero-variant regression)
+- **Total tests passing**: 13/13 new, 344/344 full frontend suite, 352/352 full backend suite (backend untouched this batch)
+- **Layers used**: Component (RTL, `variant-switcher.tsx` — zero mocks needed, pure server component), Page (RTL + mocked same-origin `fetch` + `next/navigation`/`next/headers`)
+- **Approval tests** (refactoring): None — the `normalizeDateParam` → `normalizeParam` rename was covered by the existing since/until tests still passing unchanged, no separate approval pass needed
+- **Pure functions created**: 2 — `buildVariantHref` (`variant-switcher.tsx`), `resolveActiveVariant` (`[id]/page.tsx`)
+
+### Deviations from Design
+One discovered-and-fixed edge case, documented above under "Discovered regression":
+DD4's `notFound()` guard, implemented literally as stated, would have 404'd every
+product with zero variants — regressing a separate, LOCKED requirement from
+`admin-product-management` ("A Product May Have Zero Active Variants Without
+Being Retired") that predates this change and that design.md does not mention
+(the design's variant-count reasoning only discusses `<2` for the switcher's
+render, not `0` for the guard). Fixed by scoping DD4's guard to
+`product.variants.length > 0`; a zero-variant product now behaves exactly as it
+did before this change (no switcher, no history section, page still fully
+editable). This is a genuine gap in design.md's coverage, not a
+freelance reinterpretation of DD4 — DD4 itself is otherwise implemented exactly
+as specified (membership check, before any fetch, matched id never the raw
+param, malformed values need no UUID parsing, absent defaults to `variants[0]`).
+Everything else matches design.md's DD3 (server-rendered `<nav>` of `<Link>`s,
+`URLSearchParams` href builder, `null` for `variants.length < 2`, color-only
+label) and DD4 byte-for-byte, plus D16 (StockManager untouched, confirmed via
+`git status --porcelain`) and D12 (since/until preserved on every switcher link).
+
+### Issues Found
+One environment-invocation quirk (documented above under "Environment
+discovery") in how `openspec/config.yaml`'s pinned backend test command behaves
+when run from the repo root vs. `cd backend` first — not a code defect, and not
+introduced by this batch (reproduced identically against a stash of this
+batch's changes). No production-code issues found beyond the zero-variant
+regression already caught, fixed, and test-locked above.
+
+### Workload / PR Boundary
+- Mode: chained PR slice (feature-branch-chain, per `tasks.md`'s confirmed
+  delivery decision; PR 3 of 3 — base = PR 2's branch — and the final PR of
+  this change)
+- Current work unit: Unit 3 / PR 3 (variant switcher component, its page
+  wiring, docstring correction, and the change's final cross-stack
+  verification)
+- Boundary: starts from PR 2's already-shipped URL-driven date filter (variant
+  still hardwired to `variants[0]`) and ends with a fully URL-driven
+  (`?variant=<id>`) switcher, membership-checked before any history fetch,
+  404-on-mismatch (never a silent fallback, never 403), preserving the active
+  date filter on every link, and completely decoupled from `StockManager`'s
+  own write-target selector. Nothing remains out of scope — this is the last
+  PR of the change
+- Estimated review budget impact: within the forecast's variant-switcher
+  estimate (~300-350 lines: 87 + 120 new + ~289 net diff on `[id]/page.tsx` +
+  its test file ≈ 496 total for this slice, plus the docstring-only portion of
+  the diff); self-contained, independently revertible PR 3
+
+### Status
+**23/23 tasks complete. All 3 PRs (backend date-filter, frontend date-filter
+UI, frontend variant switcher) are implemented, TDD-evidenced, and the full
+cumulative suite is green: 344/344 frontend, 352/352 backend, `tsc --noEmit`
+clean, zero domain/migration files touched anywhere in the change.** Ready for
+`sdd-verify`.

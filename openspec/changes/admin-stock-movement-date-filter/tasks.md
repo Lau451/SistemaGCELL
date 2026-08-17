@@ -76,15 +76,15 @@ independently reviewable and revertible without leaving `[id]/page.tsx` in a hal
 
 ## Phase 9: Variant Switcher Component (PR 3)
 
-- [ ] 9.1 RED — create `variant-switcher.test.tsx`: one link per variant labelled by `color`; `aria-current="page"` on active; hrefs carry `?variant=` and active `since`/`until` (D12); renders nothing for a single-variant product; offset percent-encoded, not a space.
-- [ ] 9.2 GREEN — create `variant-switcher.tsx`: server component, `<nav>` of `<Link>`s, `URLSearchParams` href builder, `null` for `variants.length < 2`.
+- [x] 9.1 RED — create `variant-switcher.test.tsx`: one link per variant labelled by `color`; `aria-current="page"` on active; hrefs carry `?variant=` and active `since`/`until` (D12); renders nothing for a single-variant product; offset percent-encoded, not a space.
+- [x] 9.2 GREEN — create `variant-switcher.tsx`: server component, `<nav>` of `<Link>`s, `URLSearchParams` href builder, `null` for `variants.length < 2`.
 
 ## Phase 10: Page Wiring — Variant Switcher (PR 3 — threat matrix: IDOR-adjacent `?variant=`)
 
-- [ ] 10.1 RED — extend `[id]/page.test.tsx`: absent `?variant` → `variants[0]`; valid `?variant` → that variant's history; foreign/nonexistent/malformed `?variant` → `notFound()`, movements proxy NOT called; matched variant's own id used in the fetch URL, never the raw param; `StockManager` output unaffected by `?variant`.
-- [ ] 10.2 GREEN — implement `resolveActiveVariant`, wire the `notFound()` guard before any fetch, render `VariantSwitcher`, pass `activeVariantId` to `StockHistory`, update the file header docstring in `[id]/page.tsx`.
+- [x] 10.1 RED — extend `[id]/page.test.tsx`: absent `?variant` → `variants[0]`; valid `?variant` → that variant's history; foreign/nonexistent/malformed `?variant` → `notFound()`, movements proxy NOT called; matched variant's own id used in the fetch URL, never the raw param; `StockManager` output unaffected by `?variant`.
+- [x] 10.2 GREEN — implement `resolveActiveVariant`, wire the `notFound()` guard before any fetch, render `VariantSwitcher`, pass `activeVariantId` to `StockHistory`, update the file header docstring in `[id]/page.tsx`.
 
 ## Phase 11: Cleanup
 
-- [ ] 11.1 Confirm `[id]/page.tsx`'s docstring no longer claims variant switching is a client-side fetch.
-- [ ] 11.2 Run `npm --prefix frontend test && uv run --project backend pytest -q` after PR 3 to confirm the cumulative change set is green.
+- [x] 11.1 Confirm `[id]/page.tsx`'s docstring no longer claims variant switching is a client-side fetch.
+- [x] 11.2 Run `npm --prefix frontend test && uv run --project backend pytest -q` after PR 3 to confirm the cumulative change set is green.
