@@ -264,11 +264,24 @@ though it is not production code).
 - [x] 5.3 Confirm zero diff under `supabase/migrations/`, `backend/src/`,
       `frontend/src/` (D5); confirm no `secrets.` token or real Supabase
       value anywhere in the diff (D2).
-      **Result: `git diff 6b92241..HEAD --stat -- supabase/migrations
-      backend/src frontend/src` → empty (D5 confirmed across the whole
-      change). `git diff 6b92241..HEAD -- .github supabase/ci backend/tests
-      openspec/config.yaml | grep -iE '\$\{\{ secrets\.|sk-[a-zA-Z0-9]{16,}|supabase\.co'`
-      → no match (D2 confirmed across the whole change).**
+      **Result (initial, INCORRECT baseline): `git diff 6b92241..HEAD --stat
+      -- supabase/migrations backend/src frontend/src` → empty. `6b92241`
+      is NOT the pre-change baseline — it is already the 4th commit of this
+      change. Caught by `sdd-verify` (see verify-report.md's D5 WARNING).**
+      **Result (corrected, true baseline `8ff7b7c`, the commit before this
+      change started): `supabase/migrations` and `backend/src` — genuinely
+      zero diff. `frontend/src` — 2 files, 15 lines:
+      `stock-history.test.tsx` (+1, `getTimezoneOffset` mock) and
+      `catalog-route-conformance.test.ts` (+14/-2, CRLF→LF hash-pin fix),
+      both from PR1's live-CI bug fixes (`8b0cf22`). Both are `*.test.tsx`/
+      `__tests__/*.ts` files (Vitest co-location convention) — zero
+      application/domain/API code touched, so D5's substantive intent
+      (no production code changes) genuinely holds; only this task's
+      original "empty diff" wording was inaccurate. `design.md` and
+      `apply-progress.md` corrected accordingly. D2 check (`git diff
+      8ff7b7c..HEAD -- .github supabase/ci backend/tests openspec/config.yaml
+      | grep -iE '\$\{\{ secrets\.|sk-[a-zA-Z0-9]{16,}|supabase\.co'`) →
+      no match, confirmed across the correct full-change diff.**
 - [x] 5.4 Push the assembled branch(es) per the chosen chain strategy and
       confirm the real GitHub Actions run is green end to end — the
       workflow's own verification step (no traditional RED/GREEN for YAML).

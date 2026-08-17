@@ -210,7 +210,8 @@ project is ever addressable.
 | `backend/tests/conftest.py` | **Unchanged** | `DB_URL` skip semantics carry over; CI just sets the var |
 | `frontend/package.json` | **Unchanged** | DD2b: no `typecheck` script added |
 | `supabase/migrations/**` | **Unchanged** | Read-only replay input. No migration |
-| `backend/src/**`, `frontend/src/**` | **Unchanged** | D5 |
+| `backend/src/**` | **Unchanged** | D5 |
+| `frontend/src/**` | **Unchanged, except 2 pre-existing test files** | D5's substantive intent (no production code) holds. PR1's live-CI verification (task 1.4) found and fixed 2 environment-dependent test bugs only surfaced by running CI for the first time: `frontend/src/app/(admin)/admin/products/stock-history.test.tsx` (missing `getTimezoneOffset` mock) and `frontend/src/lib/pwa/__tests__/catalog-route-conformance.test.ts` (CRLF-vs-LF SHA256 pin). Both files are `*.test.tsx`/`__tests__/*.ts` under this repo's Next.js/Vitest co-location convention — no application/domain/API code touched. See verify-report.md's D5 finding |
 
 ## Interfaces / Contracts
 

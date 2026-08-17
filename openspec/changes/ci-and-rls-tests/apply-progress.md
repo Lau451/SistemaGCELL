@@ -204,9 +204,13 @@ all exposed for the first time by actually running CI:
    Fixed by normalizing CRLF→LF before hashing and re-pinning to the
    normalized value, making the pin OS-independent going forward.
 
-All three fixed in `8b0cf22` (test-file-only changes, zero `backend/src`/
-`frontend/src` touched, consistent with D5). Second run (31992452282) went
-fully green on both jobs. Task 1.4 marked complete.
+All three fixed in `8b0cf22` (test-file-only changes: zero `backend/src`
+touched; under `frontend/src`, only the two `*.test.tsx`/`__tests__/*.ts`
+files named above, per this repo's Vitest co-location convention — no
+application/domain/API code touched, so D5's substantive intent holds; see
+`verify-report.md`'s D5 finding for the corrected baseline this was
+originally mis-verified against). Second run (31992452282) went fully green
+on both jobs. Task 1.4 marked complete.
 
 ## PR 2 — Postgres Bootstrap (tasks 2.1-2.5, orchestrator)
 
