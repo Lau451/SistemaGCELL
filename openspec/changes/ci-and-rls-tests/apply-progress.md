@@ -178,6 +178,32 @@ None.
 
 ### Status
 
-4/28 total tasks complete (0.1, 1.1, 1.2, 1.3). Task 1.4 pending a real
-push/dispatch by the orchestrator. Phases 2–5 (24 tasks) remain for future
-`sdd-apply` batches.
+5/28 total tasks complete (0.1, 1.1–1.4). Phases 2–5 (23 tasks) remain for
+future `sdd-apply` batches.
+
+### PR 1 — Live CI Verification (orchestrator, post-apply)
+
+Pushed `84f3eab`+`2080432` to `main`. First real run (31992223973) caught 3
+genuine pre-existing latent bugs — none touched by this batch's own diff,
+all exposed for the first time by actually running CI:
+
+1. **Backend**: `ruff check` failed on an unused `Decimal` import in
+   `test_admin_initial_stock.py` — `ruff check` had never run in CI before,
+   so this had been silently accumulating.
+2. **Frontend**: `stock-history.test.tsx`'s "changing the Since date input"
+   test asserted a hardcoded `-03:00` offset without mocking
+   `Date.prototype.getTimezoneOffset()` — passed only on a machine whose
+   local timezone happens to be UTC-03 (the developer's), failed on the
+   UTC GitHub Actions runner. A sibling test in the same file already had
+   the correct mock; this one was missing it.
+3. **Frontend**: `catalog-route-conformance.test.ts` pins a SHA256 of
+   `runtime-caching.ts`'s raw bytes. The pinned hash was computed against
+   CRLF line endings (Windows `core.autocrlf=true` materializes CRLF on
+   disk), but the repository stores LF and Linux CI checks out LF
+   unchanged — so the hash never matched on any non-Windows checkout.
+   Fixed by normalizing CRLF→LF before hashing and re-pinning to the
+   normalized value, making the pin OS-independent going forward.
+
+All three fixed in `8b0cf22` (test-file-only changes, zero `backend/src`/
+`frontend/src` touched, consistent with D5). Second run (31992452282) went
+fully green on both jobs. Task 1.4 marked complete.

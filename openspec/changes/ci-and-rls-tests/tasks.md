@@ -72,9 +72,14 @@ though it is not production code).
 - [x] 1.3 GREEN `openspec/config.yaml` — replace `testing.quality_tools.type_checker`
       value with the literal DD2b line (Next-integrated tsc note); no other
       line touched.
-- [ ] 1.4 Verify (workflow's own proof, not RED/GREEN): push/dispatch a real
-      run and confirm both jobs go green end to end. **Pending — requires an
-      actual GitHub push/PR/dispatch, which sdd-apply cannot perform.**
+- [x] 1.4 Verify (workflow's own proof, not RED/GREEN): pushed to `main` and
+      confirmed both jobs green end to end on GitHub Actions
+      (run 31992452282). First push (2080432, run 31992223973) caught 3 real
+      pre-existing latent bugs never surfaced by local runs: an unused import
+      ruff had never checked in CI, a timezone-dependent frontend test
+      (missing `getTimezoneOffset` mock, passed only on UTC-03 machines), and
+      a CRLF-vs-LF SHA256 pin (passed only on Windows checkouts). Fixed in
+      `8b0cf22`; second push went fully green.
 
 ## Phase 2: Postgres bootstrap — PR 2 (wires EXISTING DB tests in)
 
