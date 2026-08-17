@@ -422,3 +422,238 @@ None.
 
 18/28 total tasks complete (0.1, 1.1–1.4, 2.1–2.6, 3.1–3.7). Phase 4 (6
 tasks) and Phase 5 (4 tasks) remain for future `sdd-apply` batches.
+
+## Batch 3 of 4: Phase 4 — RLS module, part B (service_role + storage, PR 4)
+
+**Mode**: Strict TDD (project-wide `strict_tdd: true`), same proving-suite
+discipline as Batch 2 (PR 3): this batch tests already-shipped RLS
+policies/grants/triggers (D5 forbids any `backend/src/` change), so there is
+no defect to fix. RED is a non-vacuousness proof of the exact mechanism under
+test (`BYPASSRLS`'s load-bearing role), executed manually and reverted, not a
+committed failing test.
+
+**Delivery**: chained PR slice, Work Unit 4 of 4 (final content PR in the
+chain). Scope pre-assigned as "PR 4 of 4" — RLS module part B — and stays
+inside that unit's boundary only. Phase 5 (final combined regression across
+all 4 PRs + live GitHub Actions confirmation) is explicitly **not** touched
+in this batch — that is the orchestrator's job next. Phases 1–3 were already
+committed and (for PR1/PR2) pushed and verified green on live GitHub Actions
+before this batch started (see Batch 1, PR 2, and Batch 2 sections above);
+PR 3 (`6c8e3cb`+`574c88c`) was committed locally but not yet pushed per the
+launch prompt.
+
+### Completed Tasks
+
+- [x] 4.1 — RED, non-committed proof that `BYPASSRLS` is load-bearing for
+      the service_role CRUD test, without mutating the real local
+      `service_role` role. Inside a transaction rolled back at the end
+      (never committed): created a brand-new role `rls_proof_no_bypass` with
+      the *identical* explicit GRANTs `service_role` has on
+      `products`/`product_variants`/`product_images` (`select, insert,
+      update, delete` + `usage on schema public`) but **without**
+      `bypassrls`, then attempted the same `INSERT` under it via `SET LOCAL
+      ROLE`. Result:
+      `ERROR: new row violates row-level security policy for table
+      "products"` — the GRANT alone is insufficient; the base tables have
+      RLS enabled with zero policies, so only `BYPASSRLS` (which the real
+      `service_role` role carries) lets the CRUD test's INSERT succeed.
+      Confirmed via `SELECT rolname FROM pg_roles WHERE rolname =
+      'rls_proof_no_bypass'` returning 0 rows after `ROLLBACK` — `CREATE
+      ROLE`/`GRANT` are transactional DDL, so the temporary role and its
+      grants left no trace and the real `service_role` role was never
+      touched, satisfying the launch prompt's constraint directly (this is
+      the analogous substitute for PR3's "disable `SET LOCAL ROLE`
+      temporarily" RED proof — same non-vacuousness goal, adapted to a
+      claim about a role *attribute* rather than the role-switch mechanism
+      itself). A secondary finding surfaced along the way: the local
+      `postgres` connection role is **not** a literal Postgres superuser
+      (`rolsuper = false`); it has `rolbypassrls = true` and
+      `rolcreaterole = true` instead (Supabase's convention). `SET ROLE` to
+      an arbitrary newly-created role therefore needs an explicit `GRANT
+      <role> TO postgres` first — membership, not superuser status, is what
+      authorizes it. This has no effect on any existing `as_role()` call
+      (`anon`/`authenticated`/`service_role` are already granted to
+      `postgres` by Supabase's own bootstrap), so no other test needed any
+      change.
+- [x] 4.2 — GREEN:
+      `test_service_role_full_crud_on_products_variants_and_images` — one
+      test performing INSERT → SELECT(assert) → UPDATE → SELECT(assert) →
+      DELETE → SELECT(assert) on `products`/`product_variants`/
+      `product_images`, all inside a single `as_role(db_conn,
+      PRIVILEGED_ROLE)` block. Doing the full chain in one block is
+      required, not stylistic: `as_role()`'s `finally: await
+      savepoint.rollback()` always discards the block's writes on exit
+      (see its docstring), so a write made in one `as_role` call is
+      invisible to a later, separate `as_role` call — verified this
+      behavior directly against the file's own existing pattern (Part A's
+      writes always happen via `db_conn` *outside* `as_role`, reads happen
+      inside it) before designing this test. 1/1 passed.
+- [x] 4.3 — GREEN, 3 tests for the `stock_movements` grant-layer split (DD5
+      #1): `test_service_role_select_and_insert_succeed_on_stock_movements`
+      (INSERT + count-assert inside one `as_role` block),
+      `test_service_role_update_denied_on_stock_movements` and
+      `test_service_role_delete_denied_on_stock_movements` (each seeds a
+      real row as superuser first, then attempts the denied statement under
+      a fresh `as_role(db_conn, PRIVILEGED_ROLE)` block, asserting
+      `asyncpg.exceptions.InsufficientPrivilegeError`). 3/3 passed —
+      confirms `service_role` is stopped by the missing `GRANT`
+      (`20260810000458_public_catalog_rls.sql:65` grants only `select,
+      insert`), one layer above the trigger, exactly as DD5 states.
+- [x] 4.4 — GREEN, 2 tests for the append-only trigger itself (DD5 #2):
+      `test_owner_update_denied_by_append_only_trigger_on_stock_movements`
+      and `test_owner_delete_denied_by_append_only_trigger_on_stock_movements`,
+      both using `db_conn` directly (the owner/superuser connection — never
+      `as_role`, per DD5's explicit distinction: `service_role` never
+      reaches this layer, it is stopped earlier by 4.3's grant-layer test).
+      Each wraps `pytest.raises(asyncpg.exceptions.RaiseError,
+      match="append-only")` **around** an `async with db_conn.transaction():`
+      block (not inside it) — deliberate ordering: letting the trigger's
+      exception propagate out of the nested-transaction context manager is
+      what makes `Transaction.__aexit__` issue `ROLLBACK TO SAVEPOINT`
+      instead of the default commit-on-clean-exit path, which would itself
+      fail (`RELEASE SAVEPOINT` is not permitted once the sub-transaction is
+      aborted). Verified this reasoning against `as_role()`'s own design (it
+      avoids the same trap by never relying on the context manager's default
+      exit — it always explicitly rolls back in a `finally` block instead).
+      2/2 passed.
+- [x] 4.5 — GREEN, 5 tests for the `storage.objects` matrix: seeded via a
+      new `_seed_two_bucket_storage_objects()` helper (superuser, real
+      `product-photos` bucket + one new unrelated bucket, one object each,
+      unique names via `uuid4().hex[:8]` so scoping is asserted by object
+      identity, not just a row count).
+      `test_anon_reads_only_product_photos_bucket_objects`,
+      `test_anon_insert_denied_on_storage_objects`,
+      `test_anon_update_affects_zero_rows_on_storage_objects`,
+      `test_anon_delete_affects_zero_rows_on_storage_objects`,
+      `test_service_role_insert_succeeds_on_storage_objects`. 5/5 passed.
+      **Discovered and documented a local-only fidelity gap not covered by
+      CI's minimal stub (design.md DD1's own named "documented fidelity
+      gap")**: the real local Supabase Storage schema installs a
+      statement-level `BEFORE DELETE` trigger
+      (`storage.protect_objects_delete` → `storage.protect_delete()`) that
+      raises `Direct deletion from storage tables is not allowed. Use the
+      Storage API instead.` (SQLSTATE 42501, same class as
+      `InsufficientPrivilegeError`) for **any** direct `DELETE` on
+      `storage.objects`, from **any** role, unless the session sets
+      `storage.allow_delete_query = 'true'` — verified this experimentally
+      with raw `psql` (`SET LOCAL ROLE anon; DELETE ...` → the guard error;
+      then `SET LOCAL storage.allow_delete_query = 'true'; DELETE ...` →
+      `DELETE 0`, the real RLS-layer result) *before* writing the
+      permanent test, to avoid asserting the wrong layer under a
+      same-SQLSTATE coincidence. The permanent
+      `test_anon_delete_affects_zero_rows_on_storage_objects` sets that GUC
+      before the DELETE, with a docstring explaining why: it neutralizes a
+      local-only Storage-*service* safety net (not present in CI's `01_
+      storage_schema.sql` stub, which has no such trigger), so the
+      assertion proves the RLS policy layer identically on both
+      environments — an unrecognized two-part custom GUC name is a
+      harmless, silently-accepted no-op placeholder in vanilla Postgres,
+      so setting it on CI (where the trigger doesn't exist) changes
+      nothing.
+- [x] 4.6 — Verify. `DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      uv run pytest backend/tests/integration/db/test_rls_policies.py -v` →
+      **64 passed** (53 Part A + 11 Part B, matches the file's full test
+      count exactly). Full backend suite, same `DB_URL`:
+      **422 passed, 0 failed** (411 pre-existing from Batch 2 + 11 new).
+      `uv run ruff check tests/integration/db/test_rls_policies.py` → all
+      checks passed. Confirmed **zero leftover rows** directly (not
+      assumed) via `docker exec supabase_db_SistemaGCELL psql`: `SELECT
+      count(*) FROM products WHERE slug LIKE 'funda-rls-%'` → 0; `SELECT
+      count(*) FROM stock_movements WHERE reason = 'oops'` → 0; `SELECT
+      count(*) FROM storage.buckets WHERE id LIKE 'rls-test-%'` → 0;
+      `SELECT count(*) FROM storage.objects WHERE name LIKE 'rls-test-%'`
+      → 0 — confirms `db_conn`'s per-test transaction rollback (unmodified,
+      D5/DD4) leaves no trace across every new table/schema this batch
+      touched, including `storage`. **The "confirm CI actually runs it"
+      half of D4 is deferred to the orchestrator** — this batch has no
+      GitHub push/`workflow_dispatch` access, the same deferral pattern
+      used for PR1's task 1.4.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `backend/tests/integration/db/test_rls_policies.py` | Modified (appended) | Added `PRIVILEGED_ROLE` constant, `_seed_two_bucket_storage_objects()` helper, and 11 Part B tests: service_role full CRUD (1), stock_movements grant-layer split (3), append-only trigger owner-layer (2), storage.objects matrix (5). Updated module docstring to describe Part B instead of deferring it |
+| `openspec/changes/ci-and-rls-tests/tasks.md` | Modified | Marked 4.1–4.6 complete with per-task Result notes; 4.6's CI-confirmation half noted as deferred to the orchestrator |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres uv run pytest backend/tests/integration/db/test_rls_policies.py -v` (from repo root) → **64 passed** (53 pre-existing + 11 new) |
+| Runtime harness command/scenario and exact result | Real local `supabase start` Postgres (confirmed via `docker ps` — `supabase_db_SistemaGCELL healthy` — same instance Batch 2 used). Every assertion executes actual `SET LOCAL ROLE` / RLS / GRANT / trigger enforcement against real Postgres, including a real local-only Storage-service trigger discovered and documented above. Full backend suite against the same instance: `cd backend && DB_URL=... uv run pytest -q` → **422 passed, 0 failed** |
+| Rollback boundary | Revert the appended block in `backend/tests/integration/db/test_rls_policies.py` (11 tests + 1 constant + 1 helper + docstring update); no other file touched in this batch. `db_conn`'s existing per-test transaction rollback (unchanged, D5/DD4) means no schema, policy, grant, trigger, or data change is left behind by any test run — verified directly via `psql` row counts across `products`, `stock_movements`, `storage.buckets`, and `storage.objects`, not assumed |
+
+### TDD Cycle Evidence (Strict TDD)
+
+| Task | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| 4.1–4.2 (service_role CRUD, `BYPASSRLS` proof) | Created a temporary, fully-reversible role (`rls_proof_no_bypass`) inside a rolled-back transaction with `service_role`'s exact GRANTs minus `bypassrls`; attempted the same INSERT → **failed**, `ERROR: new row violates row-level security policy for table "products"`. Confirmed the temp role left zero trace after rollback (`pg_roles` count 0) — the real `service_role` role was never mutated | Wrote the permanent CRUD test against the real, unmodified `service_role` role; ran it → **1 passed** | Not needed — single cohesive test, no restructuring required |
+| 4.3 (stock_movements grant-layer split) | N/A as a separate RED — this is a proving suite against an already-shipped GRANT statement (`grant select, insert on stock_movements to service_role`, no update/delete), same category as Part A's privilege-matrix tests: the expected denial is unconditionally true given the shipped grant, not a behavior a broken harness could fake vacuously (a broken `as_role()` would already have failed Part A's 3.1 non-vacuousness proof) | 3/3 passed on first run | Not needed |
+| 4.4 (append-only trigger, owner layer) | N/A as a separate RED — proving an already-shipped `BEFORE UPDATE OR DELETE` trigger (`reject_stock_movements_mutation`) whose exception message is asserted verbatim (`match="append-only"`); the trigger's existence is what makes the test genuine, and it is exercised via `db_conn` directly (not `as_role`), so Part A's role-switch non-vacuousness proof does not apply here — the non-vacuousness argument instead comes from executing the actual `UPDATE`/`DELETE` statement and asserting the real exception type + message, which a no-op or misconfigured test could not fake | 2/2 passed on first run | Not needed |
+| 4.5 (storage.objects matrix) | Ran the exact `SELECT`/`INSERT`/`UPDATE`/`DELETE` sequence manually via raw `psql` with `SET LOCAL ROLE` **before** writing the permanent test, specifically to discover whether the local Storage schema's extra `protect_delete` trigger would produce a different (and misleading, same-SQLSTATE) failure mode than the RLS policy under test — it did, and the manual proof is what surfaced the `storage.allow_delete_query` GUC as the correct, non-committed way to neutralize it | 5/5 passed after adding the GUC-set line to the DELETE test | Not needed |
+
+### Deviations from Design
+
+1. Task 4.1's literal instruction implied a committed/permanent RED test
+   ("confirm the service_role CRUD test fails without bypassrls present").
+   As with Batch 2's task 3.1, this cannot be done by mutating the real,
+   shared local `service_role` role (explicitly disallowed by the launch
+   prompt) or by shipping a temporary-but-committed test that manipulates
+   role attributes as part of the permanent suite. Substituted a manual,
+   fully-reversible, non-committed proof using a throwaway role with
+   `service_role`'s exact grants minus `bypassrls`, documented in tasks.md
+   and here. This is the same category of substitution PR3 used for its own
+   analogous local-vs-CI-only constraint, applied to a different claim
+   (role attribute vs. role-switch mechanism).
+2. Design.md's Testing Strategy table describes the storage tests generically
+   ("`UPDATE`/`DELETE` affect 0 rows") without anticipating the real local
+   Supabase Storage schema's `protect_delete` statement-level trigger — a
+   genuine discovery during this batch, not present in CI's minimal stub
+   (DD1's own named, expected fidelity gap between the stub and a real
+   Supabase instance). Handled by setting `storage.allow_delete_query =
+   'true'` inside the `anon` DELETE test's `as_role` block, with a docstring
+   explaining the divergence and why the fix is portable to CI without
+   changing test meaning there.
+3. None otherwise — implementation matches design.md's DD5 two-layer
+   append-only proof, the stock_movements grant-layer split, and the
+   storage matrix exactly as specified.
+
+### Issues Found
+
+None — both discoveries above (the `postgres` role's non-superuser status
+locally, and the local-only `protect_delete` trigger) are pre-existing
+environment facts, not regressions, and both are fully documented and
+worked around without touching `backend/src/**`, `supabase/migrations/**`,
+or any already-shipped Phase 1–3 file.
+
+### Remaining Tasks (future batch — orchestrator)
+
+- [ ] Phase 5: final combined regression across all 4 PRs + real GitHub
+      Actions green-run confirmation (tasks 5.1–5.4) — explicitly out of
+      this batch's scope per the launch prompt.
+- [ ] Task 4.6's CI-confirmation half: verify the real CI workflow
+      (Phase 2's `ci.yml`) actually executes these 11 new Part B tests once
+      pushed — deferred to the orchestrator, no GitHub push/dispatch access
+      in this batch.
+
+### Workload / PR Boundary
+
+- Mode: chained PR slice (4 total), Work Unit 4 of 4 (final content PR)
+- Current work unit: "RLS module part B: service_role CRUD, ledger
+  grant-layer split, DD5 append-only two-layer proof, storage.objects
+  matrix" — exactly as scoped in tasks.md's `Suggested Work Units` table
+- Boundary: starts from the 53-test Part A module (unchanged) and ends with
+  the full 64-test module; does not touch `backend/src`, `frontend/src`,
+  `.github/workflows`, `supabase/ci/`, or `supabase/migrations`
+- Estimated review budget impact: the appended block is ~330 lines
+  (constant + helper + 11 tests + docstring update) — inside the 400-line
+  budget on its own, matching tasks.md's forecast for this slice (the
+  forecast's 450–550 line range was for the *full* module including Part
+  A, already delivered in PR 3)
+
+### Status
+
+24/28 total tasks complete (0.1, 1.1–1.4, 2.1–2.6, 3.1–3.7, 4.1–4.6). Phase 5
+(4 tasks: 5.1–5.4) remains — orchestrator's scope per the launch prompt, not
+this batch's.

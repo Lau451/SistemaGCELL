@@ -170,25 +170,75 @@ though it is not production code).
 
 ## Phase 4: RLS module, part B — PR 4 (service_role + storage)
 
-- [ ] 4.1 RED extend `test_rls_policies.py` — add the service_role CRUD test
+- [x] 4.1 RED extend `test_rls_policies.py` — add the service_role CRUD test
       (INSERT→UPDATE→DELETE on `products`/`product_variants`/`product_images`
       under `as_role("service_role")`); confirm it fails without `bypassrls`
       present (regression guard on DD1's load-bearing bootstrap detail).
-- [ ] 4.2 GREEN — service_role CRUD test passes (proves `BYPASSRLS` + GRANT
-      together).
-- [ ] 4.3 GREEN — ledger grant-layer test: `service_role` `SELECT`/`INSERT`
+      **Result: could not mutate the real local `service_role` role itself
+      (would violate "without mutating the real local supabase stack's
+      role"), so substituted an equivalent, fully-reversible proof: inside a
+      transaction rolled back at the end (never committed), created a
+      brand-new role `rls_proof_no_bypass` with the *exact same* explicit
+      GRANTs as `service_role` on `products`/`product_variants`/
+      `product_images` but WITHOUT `bypassrls`, then attempted the same
+      INSERT under it. Result:
+      `ERROR: new row violates row-level security policy for table
+      "products"` — confirming the GRANT alone is insufficient; `BYPASSRLS`
+      is load-bearing exactly as DD1 states. Confirmed via `pg_roles` that
+      the temporary role is gone after `ROLLBACK` (transactional DDL) — the
+      real `service_role` role was never touched.**
+- [x] 4.2 GREEN — service_role CRUD test passes (proves `BYPASSRLS` + GRANT
+      together). **Result:
+      `test_service_role_full_crud_on_products_variants_and_images` — 1/1
+      passed. Full INSERT→SELECT→UPDATE→SELECT→DELETE→SELECT chain on all 3
+      tables inside one `as_role("service_role")` block (writes made inside
+      `as_role` are visible only for the block's lifetime, so the whole
+      chain must share one block).**
+- [x] 4.3 GREEN — ledger grant-layer test: `service_role` `SELECT`/`INSERT`
       succeed on `stock_movements`; `UPDATE`/`DELETE` raise
-      `InsufficientPrivilegeError` (DD5 #1, grant layer only).
-- [ ] 4.4 GREEN — append-only trigger test: connect as the table
+      `InsufficientPrivilegeError` (DD5 #1, grant layer only). **Result: 3
+      tests, 3/3 passed
+      (`test_service_role_select_and_insert_succeed_on_stock_movements`,
+      `test_service_role_update_denied_on_stock_movements`,
+      `test_service_role_delete_denied_on_stock_movements`).**
+- [x] 4.4 GREEN — append-only trigger test: connect as the table
       **owner/superuser** (not `service_role`); assert `UPDATE`/`DELETE` on
       `stock_movements` raise `asyncpg.exceptions.RaiseError` matching
       `"append-only"` (DD5 #2, trigger layer — precision fix, not reopened).
-- [ ] 4.5 GREEN — storage tests: seed two buckets + objects as superuser;
+      **Result: 2 tests, 2/2 passed
+      (`test_owner_update_denied_by_append_only_trigger_on_stock_movements`,
+      `test_owner_delete_denied_by_append_only_trigger_on_stock_movements`),
+      using `db_conn` directly (not `as_role`) since `db_conn` already is
+      the owner/superuser connection.**
+- [x] 4.5 GREEN — storage tests: seed two buckets + objects as superuser;
       under `as_role("anon")` reads return only `product-photos` objects,
       `INSERT` denied, `UPDATE`/`DELETE` affect 0 rows; under
-      `as_role("service_role")` `INSERT` succeeds.
-- [ ] 4.6 Verify: full `test_rls_policies.py` suite green (~14 parametrized
+      `as_role("service_role")` `INSERT` succeeds. **Result: 5 tests, 5/5
+      passed. Discovered and documented a local-only fidelity gap not in
+      CI's minimal stub (design.md DD1): the real local Supabase Storage
+      schema adds a statement-level trigger
+      (`storage.protect_delete`) that rejects ANY direct `DELETE` on
+      `storage.objects` unless `storage.allow_delete_query` is set —
+      verified experimentally via raw `psql` before writing the test.
+      Setting that GUC inside the `anon` DELETE test neutralizes the
+      local-only Storage-service guard so the assertion proves the actual
+      RLS policy (`DELETE 0`, no error) identically on both environments —
+      an unrecognized custom GUC is a harmless no-op on CI's vanilla
+      `postgres:17`, which has no such trigger.**
+- [x] 4.6 Verify: full `test_rls_policies.py` suite green (~14 parametrized
       tests total); confirm CI (Phase 2's workflow) actually runs it (D4).
+      **Result: `DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      uv run pytest backend/tests/integration/db/test_rls_policies.py -v` →
+      **64 passed** (53 Part A + 11 Part B). Full backend suite, same
+      `DB_URL`: **422 passed, 0 failed** (411 + 11 new). `uv run ruff check
+      tests/integration/db/test_rls_policies.py` → all checks passed.
+      Confirmed zero leftover rows directly via `docker exec ... psql`:
+      `products` (`slug LIKE 'funda-rls-%'`), `stock_movements`
+      (`reason = 'oops'`), `storage.buckets`/`storage.objects`
+      (`... LIKE 'rls-test-%'`) all returned **0** after the full run. The
+      "confirm CI actually runs it" half of D4 is **deferred to the
+      orchestrator** — this batch has no GitHub push/dispatch access,
+      same pattern as PR1's task 1.4.**
 
 ## Phase 5: Final regression + delivery
 
