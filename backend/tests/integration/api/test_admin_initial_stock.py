@@ -11,7 +11,6 @@ spy cannot prove the route's `transaction(pool)` scope actually rolls back
 on a mid-composition failure.
 """
 
-from decimal import Decimal
 from uuid import uuid4
 
 from admin_jwt_integration_support import make_valid_admin_token

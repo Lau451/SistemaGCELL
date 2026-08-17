@@ -40,8 +40,14 @@ import { catalogRuntimeCaching } from "@/lib/pwa/runtime-caching";
 // Pins `runtime-caching.ts` as of the ONE deliberate `/api/admin` prefix
 // extension this PR made (see the file-level comment above for why). Any
 // FURTHER, undocumented edit to this file still fails this test.
+//
+// Pinned against LF-normalized bytes, not the on-disk bytes: Windows
+// checkouts materialize this file with CRLF line endings (git's
+// core.autocrlf=true), but the repository stores LF and Linux CI checks
+// out LF unchanged -- hashing the raw on-disk buffer made this test
+// pass locally on Windows and fail on every Linux CI run.
 const PRE_CHANGE_SHA256 =
-  "4c6f7cdb2a0f76166c0cd2dd7fe556b7d62fc6ef40a4a0614ea8758fed9573c4";
+  "cb2278e82f15f8299b651eb025ee8ab015642014dd9ff32c67d63a90895b6454";
 
 const RUNTIME_CACHING_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -60,7 +66,11 @@ function matchOptionsFor(path: string): RouteMatchCallbackOptions {
 
 describe("runtime-caching.ts conformance for public-catalog-screens routes", () => {
   it("matches the pinned content (only the documented /api/admin extension)", () => {
-    const source = readFileSync(RUNTIME_CACHING_PATH);
+    // Normalize CRLF -> LF before hashing: the repository stores LF, but a
+    // Windows working tree with core.autocrlf=true materializes CRLF on
+    // disk. Hashing raw on-disk bytes makes the pin OS-dependent; hashing
+    // the LF-normalized text makes it stable everywhere.
+    const source = readFileSync(RUNTIME_CACHING_PATH, "utf8").replace(/\r\n/g, "\n");
     const hash = createHash("sha256").update(source).digest("hex");
     expect(hash).toBe(PRE_CHANGE_SHA256);
   });

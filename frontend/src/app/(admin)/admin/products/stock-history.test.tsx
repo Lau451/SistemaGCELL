@@ -265,6 +265,7 @@ describe("StockHistory", () => {
   });
 
   it("changing the Since date input pushes the URL with the converted since param, preserving until", async () => {
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(180);
     const StockHistory = await importStockHistory();
 
     render(
