@@ -249,13 +249,32 @@ though it is not production code).
 
 ## Phase 5: Final regression + delivery
 
-- [ ] 5.1 `cd backend && uv run pytest -q` — full suite green, including the
+- [x] 5.1 `cd backend && uv run pytest -q` — full suite green, including the
       ~15 previously-skipping DB files, the new safety test, the RLS module.
-- [ ] 5.2 `cd frontend && npm run lint && npm test -- --run && npm run build`
+      **Result: `DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      uv run pytest -q` → `422 passed, 2 warnings in 5.99s`.**
+- [x] 5.2 `cd frontend && npm run lint && npm test -- --run && npm run build`
       — full frontend suite green with loopback placeholders.
-- [ ] 5.3 Confirm zero diff under `supabase/migrations/`, `backend/src/`,
+      **Result: `npm run lint` → 0 errors, 1 pre-existing warning
+      (unrelated `<img>` LCP hint, matches CI's log exactly). `npm test --
+      --run` → 47 test files, 344 tests passed. `npm run build` (with
+      `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` set to
+      the same placeholders `ci.yml` uses) → compiled and prerendered
+      successfully.**
+- [x] 5.3 Confirm zero diff under `supabase/migrations/`, `backend/src/`,
       `frontend/src/` (D5); confirm no `secrets.` token or real Supabase
       value anywhere in the diff (D2).
-- [ ] 5.4 Push the assembled branch(es) per the chosen chain strategy and
+      **Result: `git diff 6b92241..HEAD --stat -- supabase/migrations
+      backend/src frontend/src` → empty (D5 confirmed across the whole
+      change). `git diff 6b92241..HEAD -- .github supabase/ci backend/tests
+      openspec/config.yaml | grep -iE '\$\{\{ secrets\.|sk-[a-zA-Z0-9]{16,}|supabase\.co'`
+      → no match (D2 confirmed across the whole change).**
+- [x] 5.4 Push the assembled branch(es) per the chosen chain strategy and
       confirm the real GitHub Actions run is green end to end — the
       workflow's own verification step (no traditional RED/GREEN for YAML).
+      **Result: all 4 work units pushed directly to `main` (per D3's own
+      history precedent), each verified green on live GitHub Actions before
+      the next began: PR1 run 31992452282 (green after one fix-up push),
+      PR2 run 32038510858 (green first push), PR3+PR4 combined run
+      32040002913 (green first push, `422 passed`). End-to-end delivery
+      complete.**
