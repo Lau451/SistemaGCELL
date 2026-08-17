@@ -114,3 +114,106 @@ needed their signatures widened to accept the two new `since`/`until` kwargs (wi
 9/23 tasks complete (Phase 1-4 done; Phase 5-11 remain). Ready for the next apply
 batch (Phase 5-8: frontend date-filter UI, PR 2) once PR 1 is reviewed/merged, or
 for `sdd-verify` to check this batch's backend slice in isolation first.
+
+## Batch 2 (this run) — Phase 5-8: Frontend Date Filter (PR 2)
+
+**Mode**: TDD (RED confirmed via a real failing test run before each GREEN
+implementation, except Phase 5 where the pure module was written first and its
+test file immediately after — both proven GREEN by a real run; every subsequent
+phase followed strict RED-then-GREEN).
+**Scope**: Phase 5 (pure date math) + Phase 6 (proxy allowlist) + Phase 7
+(history view UI) + Phase 8 (page wiring — date filter) only — tasks 5.1, 5.2,
+6.1, 6.2, 7.1, 7.2, 8.1, 8.2. This is `tasks.md`'s Unit 2 / PR 2 (frontend
+date-filter, base = PR 1's branch). Phase 9-10 (variant switcher) and Phase 11
+(final cross-stack verification) are untouched — deferred to a later apply
+batch, per `tasks.md`'s `Suggested Work Units` table.
+
+### Completed Tasks
+- [x] 5.1 RED — `stock-history-dates.test.ts` written (18 cases)
+- [x] 5.2 GREEN — `stock-history-dates.ts` created with the 5 exports
+- [x] 6.1 RED — extended `movements/__tests__/route.test.ts` (3 new cases)
+- [x] 6.2 GREEN — `ALLOWED_QUERY_PARAMS` extended to 4 entries in `movements/route.ts`
+- [x] 7.1 RED — extended `stock-history.test.tsx` (8 new cases, 1 pre-existing
+      assertion updated)
+- [x] 7.2 GREEN — date inputs, 3 presets, Clear, `useRouter`+`useSearchParams`+
+      `useTransition` push, `since`/`until` props, D13 copy added to `stock-history.tsx`
+- [x] 8.1 RED — extended `[id]/page.test.tsx` (2 new cases, `paramsFor` widened)
+- [x] 8.2 GREEN — `await searchParams`, inverted-range guard (no fetch), `since`/
+      `until` forwarding added to `[id]/page.tsx`
+
+### Files Changed
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `frontend/src/app/(admin)/admin/products/stock-history-dates.ts` | Created | 5 pure exports: `toSinceParam`/`toUntilParam` (day → offset-aware ISO-8601 instant, offset resolved per-date via `Date.prototype.getTimezoneOffset()`, microseconds written directly into the string — no JS-`Date`-derived truncation gap), `dayFromParam` (`param.slice(0,10)`), `presetRange` (today/last7/last30 per D15 — today, today-6, today-29, local-day arithmetic via `Date(y, m-1, d+delta)`, never UTC-day math), `isInvertedRange` (lexical ISO-string compare, either side missing ⇒ not inverted) |
+| `frontend/src/app/(admin)/admin/products/stock-history-dates.test.ts` | Created | 18 tests: `toSinceParam`/`toUntilParam` under a mocked negative (UTC-03) offset, a mocked positive (UTC+02) offset, and a sub-hour offset (UTC+05:30, proving 2-digit padding); a day-string format guard (`RangeError` on non-`YYYY-MM-DD`); `dayFromParam` round-trips from both a since- and an until-shaped param; `presetRange` for all 3 presets under both offset signs plus 2 month-boundary-crossing cases; `isInvertedRange` for before/equal/after/either-missing |
+| `frontend/src/app/api/admin/products/[id]/variants/[variantId]/stock/movements/route.ts` | Modified | `ALLOWED_QUERY_PARAMS` extended from `["limit","before_id"]` to `["limit","before_id","since","until"]`; docstring updated to note `variant` is deliberately NOT allowlisted (page-level view key) |
+| `frontend/src/app/api/admin/products/[id]/variants/[variantId]/stock/movements/__tests__/route.test.ts` | Modified | 3 new tests: all 4 allowlisted params forwarded while a 5th injected param is dropped; an injected `variant` param specifically dropped; a raw `+HH:MM` offset survives the fresh-`URLSearchParams` round trip percent-encoded (`%2B`/`%3A`), never appearing as a literal space |
+| `frontend/src/app/(admin)/admin/products/stock-history.tsx` | Modified | Added `since`/`until` optional props; two `<input type="date">` (labelled "Since"/"Until", controlled from `dayFromParam(since\|until)`); 3 preset `Button`s + a `Clear` `Button`; `pushRange()` builds a fresh `URLSearchParams` from `useSearchParams()` (preserving any other existing param — forward-compatible with PR 3's `?variant=`), sets/deletes `since`/`until`, and calls `router.push()` inside `useTransition`; `handleLoadMore` now also sends the current `since`/`until` via `URLSearchParams` on every subsequent page fetch; D13 empty-state copy: unfiltered stays `"No movements recorded yet."` (byte-identical), filtered (`since \|\| until` truthy) is now `"No movements in the selected date range."`. **No new reset logic was added** — Decision 6's existing compare-during-render `initialHistory`-reference check is unchanged and untouched; a filter-driven navigation reaches it exactly the same way a variant-switch or `router.refresh()` always did |
+| `frontend/src/app/(admin)/admin/products/stock-history.test.tsx` | Modified | Added `next/navigation` mock (`useRouter`/`usePathname`/`useSearchParams`, the latter backed by a mutable `let mockSearchParams` reset in `afterEach`); removed the now-obsolete "(no) date filter controls" assertion from the balance/type test (renamed to reflect only the still-locked movement-type/no-balance clauses) and added 8 new tests: renders date inputs + preset/Clear controls; both D13 empty states; last-7-days preset pushes the exact `presetRange('last7')` query (under mocked fake timers + a mocked `getTimezoneOffset`, `fireEvent.click` used instead of `userEvent` to avoid a fake-timers/`userEvent` interaction deadlock); Since-input change pushes the converted param while preserving `until`; Clear removes `since`/`until` but preserves an unrelated existing param; `handleLoadMore` re-sends the active `since`/`until`. The pre-existing prop-reference-reset test's title was extended to explicitly document that it proves Decision 6 reuse, not new code |
+| `frontend/src/app/(admin)/admin/products/[id]/page.tsx` | Modified | `EditProductPageProps.searchParams` added (required `Promise<Record<string, string \| string[] \| undefined>>`, same shape/convention as `admin/stock/page.tsx`'s Decision 7); new `normalizeDateParam` helper (array → first entry); reads `since`/`until`, computes `isInvertedRange`; `fetchAdminProductStockHistory` gains `since`/`until` params, forwarded via a fresh `URLSearchParams` (never string-concatenated, per the encoding gotcha); when inverted, the history fetch is skipped entirely (stays `EMPTY_STOCK_HISTORY`) and a `role="alert"` paragraph reading `"Start date is after end date."` renders in `StockHistory`'s place; when valid, `since`/`until` are passed through as `StockHistory` props |
+| `frontend/src/app/(admin)/admin/products/[id]/page.test.tsx` | Modified | `paramsFor` widened to also build a `searchParams` promise (default `{}`, backward compatible with the pre-existing test); `next/navigation` mock extended with `usePathname`/`useSearchParams` (needed transitively by `StockHistory`'s new hooks) and `useRouter().push`; 2 new tests: `since`/`until` forwarded via `URLSearchParams` to the movement-history fetch (asserted from the actual 4th `fetch` call's query string); an inverted range renders the guard text, does NOT render "Movement history", and issues zero fetch calls containing `/stock/movements` |
+
+### TDD Cycle Evidence
+| Task | Test File | Layer | RED | GREEN |
+|------|-----------|-------|-----|-------|
+| 5.1/5.2 | `stock-history-dates.test.ts` | Unit (pure) | Module and test file written together (pure, no existing behavior to regress); first real run confirmed **18/18 passed** with zero iteration needed — treated as the RED→GREEN pair's single confirming run since there was no separable "before" state to fail against | `npx vitest run stock-history-dates.test.ts` → **18 passed** |
+| 6.1/6.2 | `movements/__tests__/route.test.ts` | Frontend (proxy) | ✅ Written and confirmed against the un-widened 2-entry allowlist: `npx vitest run .../route.test.ts` → **3 failed, 5 passed** (`since`/`until` silently dropped, so the forwarded path lacked the query string entirely) | ✅ Passed: same command after widening `ALLOWED_QUERY_PARAMS` → **8 passed** |
+| 7.1/7.2 | `stock-history.test.tsx` | Frontend (component) | ✅ Written and confirmed against the pre-filter component: `npx vitest run stock-history.test.tsx` → **6 failed, 7 passed** (no date inputs/preset/Clear buttons existed; `handleLoadMore`'s fetch call didn't carry `since`/`until`) | ✅ Passed: same command after adding the filter UI/wiring → **13 passed** (one fake-timers/`userEvent` interaction initially timed out and was fixed by switching that one assertion to `fireEvent.click`, confirmed with a second run) |
+| 8.1/8.2 | `[id]/page.test.tsx` | Frontend (page) | ✅ Written and confirmed against the pre-searchParams page: `npx vitest run "[id]/page.test.tsx"` → **2 failed, 2 passed** (history fetch URL had no query string; the inverted-range test crashed inside `StockHistory` on `entries.length` because `stockHistory` was `undefined` — proving the guard truly issued no history fetch/prop before the guard existed) | ✅ Passed: same command after adding `searchParams`/`normalizeDateParam`/the inverted guard/param forwarding → **4 passed** |
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `cd frontend && npm test -- --run` → **332 passed (46 test files)**, full suite, zero regressions anywhere else in the frontend |
+| Typecheck | `cd frontend && npx tsc --noEmit` → clean, zero errors |
+| Diff-scope confirmation | `git diff --stat` (post-batch): 7 files modified + 2 files created, **all under `frontend/`**, all within `admin/products` or its `movements` proxy route — zero files under `backend/`, zero files named `variant-switcher.*` |
+| Rollback boundary | Revert `stock-history-dates.ts`(+test), `stock-history.tsx`(+test), the allowlist diff(+test), `[id]/page.tsx`'s `since`/`until` diff(+test). PR 1's backend endpoint stays valid and byte-identical standalone (both params already optional there); reverting this batch restores the pre-filter frontend exactly, since `since`/`until` are additive optional props/params throughout |
+
+### Test Summary
+- **Total tests written this batch**: 31 new test cases (18 pure + 3 proxy + 8 component + 2 page) plus 1 pre-existing component assertion updated (removed an obsolete "no date controls" check, since date controls are now intentionally rendered)
+- **Total tests passing**: 31/31 new, 332/332 full frontend suite
+- **Layers used**: Unit (pure date math), Integration-ish (proxy Route Handler via mocked `adminBackendFetch`), Component (RTL + `next/navigation` mocks), Page (RTL + mocked same-origin `fetch` + `next/navigation`/`next/headers` mocks)
+- **Pure functions created**: 5 in `stock-history-dates.ts` (`toSinceParam`, `toUntilParam`, `dayFromParam`, `presetRange`, `isInvertedRange`), same "pure helper module, not inline in the component" precedent as commit 4881583's `stock-movement-sign.ts`
+
+### Deviations from Design
+None. Matches design.md's DD1 (offset-aware instants, per-date `getTimezoneOffset()`,
+microseconds written directly into the string), DD2 (URL/`searchParams`-driven
+filter reusing the archived Decision 6 reset unchanged — verified by not adding
+any new reset code and by the extended prop-reference-reset test still passing),
+D9 (proxy allowlist rebuilt fresh via `URLSearchParams`, `variant` deliberately
+excluded), D13's exact two empty-state strings, and the `stock-history-dates.ts`
+interface signatures byte-for-byte as specified in "Interfaces / Contracts".
+
+### Issues Found
+One test-infrastructure issue, not a design or implementation defect: combining
+`vi.useFakeTimers()` with `userEvent.setup()` in the last-7-days preset test
+caused the test to hang until Vitest's 5000ms timeout, even with
+`advanceTimers: vi.advanceTimersByTime` configured — a known interaction some
+`userEvent` internals do not resolve cleanly under fake timers. Fixed by using
+`fireEvent.click` for that one assertion instead (no `userEvent`-internal timer
+dependency); every other interaction test in this batch still uses `userEvent`
+under real timers with no issue.
+
+### Workload / PR Boundary
+- Mode: chained PR slice (feature-branch-chain, per `tasks.md`'s confirmed
+  delivery decision; PR 2 of 3 — base = PR 1's branch)
+- Current work unit: Unit 2 / PR 2 (frontend date-filter: pure date math, proxy
+  allowlist, history view UI, page wiring for `since`/`until` only — variant
+  handling stays hardwired to `variants[0]`, unchanged from PR 1, until PR 3)
+- Boundary: starts from PR 1's already-shipped backend endpoint (accepts
+  `since`/`until`, otherwise byte-identical) and ends with a fully wired,
+  URL-driven date-range filter UI on the product detail page — three presets,
+  manual date inputs, Clear, both D13 empty states, filtered pagination,
+  and a client-side inverted-range guard. Phase 9-11 (variant switcher,
+  final cross-stack verification) are untouched; nothing in this batch reads
+  or writes a `?variant=` param
+- Estimated review budget impact: within the forecast's frontend date-filter
+  estimate; self-contained, independently revertible PR 2 that does not touch
+  `[id]/page.tsx`'s variant-resolution logic (there isn't any yet)
+
+### Status
+17/23 tasks complete (Phase 1-8 done; Phase 9-11 remain — variant switcher
+component, its page wiring, and final cross-stack cleanup/verification). Ready
+for the next apply batch (Phase 9-10: variant switcher, PR 3) once PR 2 is
+reviewed/merged, or for `sdd-verify` to check this batch's frontend date-filter
+slice in isolation first.

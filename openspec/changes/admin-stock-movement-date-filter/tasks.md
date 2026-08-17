@@ -56,23 +56,23 @@ independently reviewable and revertible without leaving `[id]/page.tsx` in a hal
 
 ## Phase 5: Pure Date Math (PR 2)
 
-- [ ] 5.1 RED — create `stock-history-dates.test.ts`: `toSinceParam`/`toUntilParam` under mocked negative + positive TZ offset; `dayFromParam` round-trip; `presetRange` for today/last7/last30 (D15); `isInvertedRange` lexical compare.
-- [ ] 5.2 GREEN — create `frontend/src/app/(admin)/admin/products/stock-history-dates.ts` with the 5 exports.
+- [x] 5.1 RED — create `stock-history-dates.test.ts`: `toSinceParam`/`toUntilParam` under mocked negative + positive TZ offset; `dayFromParam` round-trip; `presetRange` for today/last7/last30 (D15); `isInvertedRange` lexical compare.
+- [x] 5.2 GREEN — create `frontend/src/app/(admin)/admin/products/stock-history-dates.ts` with the 5 exports.
 
 ## Phase 6: Proxy Allowlist (PR 2 — threat matrix: HTTP query passthrough)
 
-- [ ] 6.1 RED — extend `movements/__tests__/route.test.ts`: exactly four params forwarded; a fifth injected param dropped; an injected `variant` param dropped; `+HH:MM` offset survives encoding.
-- [ ] 6.2 GREEN — extend `ALLOWED_QUERY_PARAMS` to `["limit","before_id","since","until"]` in `movements/route.ts`.
+- [x] 6.1 RED — extend `movements/__tests__/route.test.ts`: exactly four params forwarded; a fifth injected param dropped; an injected `variant` param dropped; `+HH:MM` offset survives encoding.
+- [x] 6.2 GREEN — extend `ALLOWED_QUERY_PARAMS` to `["limit","before_id","since","until"]` in `movements/route.ts`.
 
 ## Phase 7: History View UI (PR 2)
 
-- [ ] 7.1 RED — extend `stock-history.test.tsx`: preset click pushes correct query and preserves `variant`; both D13 empty states; `handleLoadMore` re-sends `since`/`until`; new `initialHistory` reference resets entries+cursor.
-- [ ] 7.2 GREEN — add date inputs, 3 presets, Clear, `useRouter`+`useTransition` push, `since`/`until` props, D13 copy to `stock-history.tsx`.
+- [x] 7.1 RED — extend `stock-history.test.tsx`: preset click pushes correct query and preserves `variant`; both D13 empty states; `handleLoadMore` re-sends `since`/`until`; new `initialHistory` reference resets entries+cursor.
+- [x] 7.2 GREEN — add date inputs, 3 presets, Clear, `useRouter`+`useTransition` push, `since`/`until` props, D13 copy to `stock-history.tsx`.
 
 ## Phase 8: Page Wiring — Date Filter (PR 2)
 
-- [ ] 8.1 RED — extend `[id]/page.test.tsx`: inverted URL renders guard copy and issues no fetch; `since`/`until` forwarded via `URLSearchParams` to the history fetch.
-- [ ] 8.2 GREEN — `await searchParams` for `since`/`until`, inverted-range guard (no fetch), forward params in `[id]/page.tsx` (variant handling stays hardwired to `variants[0]` until PR 3).
+- [x] 8.1 RED — extend `[id]/page.test.tsx`: inverted URL renders guard copy and issues no fetch; `since`/`until` forwarded via `URLSearchParams` to the history fetch.
+- [x] 8.2 GREEN — `await searchParams` for `since`/`until`, inverted-range guard (no fetch), forward params in `[id]/page.tsx` (variant handling stays hardwired to `variants[0]` until PR 3).
 
 ## Phase 9: Variant Switcher Component (PR 3)
 
