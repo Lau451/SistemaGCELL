@@ -20,6 +20,7 @@ import type { ProductCardProps } from "./product-card";
 interface CatalogApiItem {
   slug: string;
   name: string;
+  shortDescription: string | null;
   priceFrom: number;
   hasPriceRange: boolean;
   heroImageUrl: string | null;
@@ -44,6 +45,7 @@ function toProductCardProps(item: CatalogApiItem): ProductCardProps {
   return {
     slug: item.slug,
     name: item.name,
+    shortDescription: item.shortDescription,
     priceFrom: item.priceFrom,
     hasPriceRange: item.hasPriceRange,
     imageUrl: item.heroImageUrl,

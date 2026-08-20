@@ -23,6 +23,9 @@ export interface ProductCardProps {
   hasPriceRange: boolean;
   imageUrl: string | null;
   imageAlt: string;
+  /** Optional AI-assisted blurb (D3). Never assumes the 160-char server
+   *  cap — `line-clamp-2` truncates visually instead. */
+  shortDescription?: string | null;
 }
 
 export function ProductCard({
@@ -32,6 +35,7 @@ export function ProductCard({
   hasPriceRange,
   imageUrl,
   imageAlt,
+  shortDescription,
 }: ProductCardProps) {
   return (
     <Link
@@ -60,6 +64,14 @@ export function ProductCard({
           {hasPriceRange ? "Desde " : ""}
           {priceFormatter.format(priceFrom)}
         </p>
+        {shortDescription ? (
+          <p
+            className="text-muted-foreground line-clamp-2 text-xs"
+            data-testid="product-card-blurb"
+          >
+            {shortDescription}
+          </p>
+        ) : null}
       </div>
     </Link>
   );

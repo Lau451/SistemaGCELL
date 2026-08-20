@@ -84,4 +84,40 @@ describe("ProductCard", () => {
 
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
+
+  it("renders the shortDescription blurb when present", () => {
+    render(
+      <ProductCard
+        slug="fundas-iphone-15"
+        name="Funda iPhone 15"
+        priceFrom={12990}
+        hasPriceRange={false}
+        imageUrl={null}
+        imageAlt="Funda iPhone 15"
+        shortDescription="Funda resistente y elegante."
+      />,
+    );
+
+    expect(
+      screen.getByText("Funda resistente y elegante."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders cleanly with no blurb placeholder when shortDescription is null", () => {
+    render(
+      <ProductCard
+        slug="fundas-iphone-15"
+        name="Funda iPhone 15"
+        priceFrom={12990}
+        hasPriceRange={false}
+        imageUrl={null}
+        imageAlt="Funda iPhone 15"
+        shortDescription={null}
+      />,
+    );
+
+    expect(
+      screen.queryByTestId("product-card-blurb"),
+    ).not.toBeInTheDocument();
+  });
 });

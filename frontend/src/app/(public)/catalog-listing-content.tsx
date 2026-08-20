@@ -88,6 +88,7 @@ export async function CatalogListingPageContent() {
     return {
       slug: card.slug,
       name: card.name,
+      shortDescription: card.shortDescription,
       priceFrom: card.priceFrom,
       hasPriceRange: card.hasPriceRange,
       imageUrl: card.heroImage

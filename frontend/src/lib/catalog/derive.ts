@@ -16,6 +16,7 @@ export interface CatalogListingCard {
   id: string;
   slug: string;
   name: string;
+  shortDescription: string | null;
   priceFrom: number;
   hasPriceRange: boolean;
   inStock: boolean;
@@ -101,6 +102,7 @@ export function deriveListingCard(
     id: product.id,
     slug: product.slug,
     name: product.name,
+    shortDescription: product.short_description,
     priceFrom,
     hasPriceRange,
     inStock,

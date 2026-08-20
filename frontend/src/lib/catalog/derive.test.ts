@@ -16,6 +16,7 @@ const product: CatalogProductRow = {
   name: "Funda iPhone 15",
   description: null,
   created_at: "2026-01-01T00:00:00.000Z",
+  short_description: null,
 };
 
 function variant(overrides: Partial<CatalogVariantRow>): CatalogVariantRow {
@@ -144,6 +145,7 @@ describe("deriveListingCard", () => {
       id: "product-1",
       slug: "fundas-iphone-15",
       name: "Funda iPhone 15",
+      shortDescription: null,
       priceFrom: 1000,
       hasPriceRange: true,
       inStock: true,
@@ -157,5 +159,25 @@ describe("deriveListingCard", () => {
     const card = deriveListingCard({ product, variants, images: [] });
 
     expect(card.inStock).toBe(false);
+  });
+
+  it("derives shortDescription from the row's short_description", () => {
+    const withBlurb: CatalogProductRow = {
+      ...product,
+      short_description: "Funda resistente y elegante.",
+    };
+    const variants = [variant({ id: "v1" })];
+
+    const card = deriveListingCard({ product: withBlurb, variants, images: [] });
+
+    expect(card.shortDescription).toBe("Funda resistente y elegante.");
+  });
+
+  it("derives a null shortDescription when the row's short_description is null", () => {
+    const variants = [variant({ id: "v1" })];
+
+    const card = deriveListingCard({ product, variants, images: [] });
+
+    expect(card.shortDescription).toBeNull();
   });
 });

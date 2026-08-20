@@ -37,6 +37,7 @@ export interface CatalogListItem {
   id: string;
   slug: string;
   name: string;
+  shortDescription: string | null;
   priceFrom: number;
   hasPriceRange: boolean;
   inStock: boolean;
@@ -144,6 +145,7 @@ export async function GET(request: NextRequest) {
       id: card.id,
       slug: card.slug,
       name: card.name,
+      shortDescription: card.shortDescription,
       priceFrom: card.priceFrom,
       hasPriceRange: card.hasPriceRange,
       inStock: card.inStock,
