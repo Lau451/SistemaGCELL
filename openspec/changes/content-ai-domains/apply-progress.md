@@ -182,3 +182,96 @@ pytest -q` (whole backend suite) — 432 passed, 0 failed, 2 warnings
   the explicit scope boundary.
 - Phases 3+ (`product-form.tsx`, catalog blurb render, alt-text, `ai`/
   `content` domains, wiring) untouched, as instructed.
+
+## PR 3 — Admin Product Form (Phase 3, tasks 3.1-3.3)
+
+Status: Complete. Zero Gemini dependency. Base = PR 2 (needs the admin
+API's `description`/`short_description` fields, already accepting and
+echoing both). Wires the admin create/edit form to those two fields —
+plain, optional, hand-typeable text, no generation trigger anywhere in
+this diff (that lands in PR 11).
+
+Strict TDD followed: every GREEN change's RED test was written and
+confirmed failing first.
+
+### Files changed
+
+- `frontend/src/app/(admin)/admin/products/product-form.test.tsx` —
+  extended with 3 new tests: labeled `description`/`short_description`
+  inputs render; submitting with both blank succeeds (`role=alert`
+  absent, action called with `formData.get("description") === ""` and
+  `formData.get("short_description") === ""`); editing only
+  `short_description` on an edit-mode form (`productId` +
+  `initialDescription` set) leaves `description` unchanged in the
+  submitted `FormData`.
+- `frontend/src/app/(admin)/admin/products/product-form.tsx` — new
+  `description` `<textarea>` (labeled "Description", `maxLength={4000}`)
+  and `short_description` `<input type="text">` (labeled "Short
+  description", `maxLength={160}`) rendered between the `Model` field and
+  the `Variants` section; new `initialDescription`/
+  `initialShortDescription` props (default `""`), threaded through as
+  `defaultValue`.
+- `frontend/src/app/(admin)/admin/products/actions.test.ts` — extended
+  with 3 new tests on `buildProductPayload`'s relay contract: non-blank
+  `description`/`short_description` relayed verbatim on create; both
+  omitted from the JSON body when blank; on update, `description`
+  resubmitted unchanged while only `short_description` is edited.
+- `frontend/src/app/(admin)/admin/products/actions.ts` — `ProductWritePayload`
+  gains optional `description`/`short_description`; new
+  `optionalTrimmedField(formData, key)` helper (mirrors the existing
+  `reason`/`initial_quantity` omit-if-blank convention exactly);
+  `buildProductPayload` includes either key only when its trimmed value
+  is non-empty, so a blank field is dropped from the body entirely
+  (`AdminProductWriteRequest`'s `Field(default=None)` then persists
+  `null`) rather than sent as `""`.
+- `frontend/src/app/(admin)/admin/products/[id]/page.tsx` (deviation, see
+  below) — `AdminProduct` interface gains `description: string | null`,
+  `short_description: string | null`; both passed to `ProductForm` as
+  `initialDescription={product.description ?? ""}` /
+  `initialShortDescription={product.short_description ?? ""}`.
+
+### TDD Cycle Evidence
+
+| Change | RED (confirmed failing) | GREEN (confirmed passing) |
+|---|---|---|
+| `product-form.tsx` inputs + `initial*` props | `npm test -- product-form`: 3/12 failed — `getByLabelText(/short description/i)` threw `TestingLibraryElementError` (no matching element) | 12/12 `product-form.test.tsx` green after adding the two labeled fields and props |
+| `actions.ts` `buildProductPayload` relay/omit contract | `npm test -- actions.test`: 2/47 failed — `expected undefined to be 'Descripcion larga'` (create) and `'Descripcion original'` (update), before either field existed on the payload | 47/47 `actions.test.ts` green after `optionalTrimmedField` + the two conditional spreads |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `npm --prefix frontend test -- product-form` → 12/12 passed; `npm --prefix frontend test -- actions.test` → 47/47 passed |
+| Full frontend regression | `npm --prefix frontend test` → 47 files, 350 tests passed (was 344 before this PR; +6 new tests: 3 `product-form.test.tsx`, 3 `actions.test.ts`) |
+| Lint | `npx eslint` on all 5 changed files (`product-form.tsx`, `product-form.test.tsx`, `actions.ts`, `actions.test.ts`, `[id]/page.tsx`) — zero warnings/errors |
+| Type-check | `npx tsc --noEmit` — zero NEW errors; one pre-existing, unrelated error in `src/lib/catalog/derive.test.ts` (Phase 4 scope, `CatalogProductRow.short_description` missing on a Phase-4 test fixture — not touched, out of this task's scope) |
+| Manual `GEMINI_API_KEY`-unset verification (task 3.3, substituted per explicit headless-batch instruction) | `git diff` over `frontend/src/app/(admin)/admin/products/` grepped case-insensitively for `gemini\|generate` — only hit is this diff's own doc-comment stating "no Gemini reference" in prose (mixed-case "Gemini", not the literal uppercase `"GEMINI"` substring `test_frontend_service_role_boundary.py`'s existing `"SERVICE_ROLE" in text` pattern would match once its Phase-6 parametrization lands). No `GEMINI_API_KEY` token, no "Generate" button/label, no `.../generate` fetch call anywhere in `product-form.tsx` or `actions.ts` |
+| Rollback boundary | Revert `product-form.tsx`/`actions.ts`, their two test files, and `[id]/page.tsx`'s diff; PR 2's admin API still works via direct (non-form) calls exactly as PR 2 left it |
+
+### Deviations
+
+- **`[id]/page.tsx` is not in design.md's File Changes table for this
+  phase** (only `product-form.tsx`/`actions.ts` are named there under
+  the combined `{product-form,actions,image-manager}.tsx/.ts` row, which
+  is itself the Phase 3+5+11 combined row, not phase-specific). Without
+  wiring the edit page's `AdminProduct` fetch/props through to
+  `ProductForm`'s new `initialDescription`/`initialShortDescription`,
+  the edit form could never display a product's already-persisted copy,
+  and — because the form always resubmits both fields' current DOM
+  values (by design, so editing one field alone doesn't silently drop
+  the other) — an edit form rendered with no `initialDescription` would
+  submit `description=""` on every save, silently wiping any
+  previously-typed long description the moment an admin changed
+  anything else. This directly contradicts spec scenario "Editing
+  updates both fields independently." Fixed as part of 3.2, documented
+  here rather than silently folded in, matching PR 2's own precedent for
+  a File-Changes-table gap (`create_stocked_product.py`).
+
+### Not done in this batch (explicitly out of scope)
+
+- Phase 4+ (public catalog blurb render, alt-text, `ai`/`content`
+  domains, wiring, the "Generate copy" trigger) untouched, as instructed.
+  `product-form.tsx`'s two new fields are pure hand-typed inputs; no
+  Gemini call site, button, or reference exists anywhere in this PR's
+  diff — that lands in PR 11 (tasks 11.3-11.4), strictly after `ai`
+  (PR 6-7) and `content` (PR 8-10) exist.

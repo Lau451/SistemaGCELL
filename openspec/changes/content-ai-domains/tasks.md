@@ -168,15 +168,62 @@ UI triggers together.
 
 ## Phase 3: Admin Product Form (PR 3, base = PR 2)
 
-- [ ] 3.1 RED `frontend/src/app/(admin)/admin/products/product-form.test.tsx`
+- [x] 3.1 RED `frontend/src/app/(admin)/admin/products/product-form.test.tsx`
       — form renders two text inputs (`description`, `short_description`);
       submitting with both blank succeeds; editing only one leaves the other
       untouched in the submitted payload.
-- [ ] 3.2 GREEN `frontend/src/app/(admin)/admin/products/product-form.tsx`,
+      Result: 3 new tests added (labeled-inputs render, blank-submit
+      succeeds with `role=alert` absent, edit-one-leaves-other-untouched
+      via `productId`/`initialDescription`); confirmed RED (`TestingLibraryElementError`
+      on `getByLabelText(/short description/i)`) before 3.2. Also added 3
+      RED tests to `actions.test.ts` for `buildProductPayload`'s
+      omit-if-blank/relay-verbatim contract (not separately named in this
+      task, but required for the payload-level half of "editing... leaves
+      the other untouched" to actually hold at the `actions.ts` layer, not
+      just the form-level `FormData`); confirmed RED
+      (`expected undefined to be '...'`) before 3.2.
+- [x] 3.2 GREEN `frontend/src/app/(admin)/admin/products/product-form.tsx`,
       `actions.ts` — two editable, optional, hand-typeable fields; no Gemini
       reference anywhere in this diff.
-- [ ] 3.3 Verify manually with `GEMINI_API_KEY` unset (spec scenario
+      Result: `product-form.tsx` gains a `description` `<textarea>` and a
+      `short_description` `<input type="text">` (labeled "Description"/
+      "Short description", client `maxLength` 4000/160 as a UX nicety
+      only — server `Field(max_length=...)` 422 stays authoritative),
+      plus `initialDescription`/`initialShortDescription` props.
+      `actions.ts`'s `buildProductPayload` gains an
+      `optionalTrimmedField` helper mirroring the existing `reason`/
+      `initial_quantity` omit-if-blank convention: a blank field is
+      dropped from the relayed JSON body so `AdminProductWriteRequest`'s
+      `Field(default=None)` persists `null`; a non-blank field is relayed
+      verbatim. 12/12 `product-form.test.tsx` + 47/47 `actions.test.ts`
+      green; full frontend suite 47 files/350 tests green;
+      `npx eslint` clean on every changed file; `npx tsc --noEmit` shows
+      zero new errors (one pre-existing, unrelated Phase-4
+      `derive.test.ts` error only, out of this task's scope).
+      Deviation: also updated `[id]/page.tsx` (not named in design.md's
+      File Changes table for this phase) — its `AdminProduct` interface
+      gained `description`/`short_description`, passed through to
+      `ProductForm` as `initialDescription`/`initialShortDescription`.
+      Without this, the edit page could never pre-fill either field from
+      the already-persisted values, and an edit touching only
+      `short_description` would submit `description=""` and silently
+      clear it — directly breaking spec scenario "Editing updates both
+      fields independently". Same category of necessary-but-unlisted
+      deviation as PR2's `create_stocked_product.py` change.
+- [x] 3.3 Verify manually with `GEMINI_API_KEY` unset (spec scenario
       precondition) via `npm run dev`.
+      Result: substituted with a code-reading check (headless apply
+      batch, per explicit orchestrator instruction) — grepped the full
+      diff for `frontend/src/app/(admin)/admin/products/` for
+      `gemini|generate` (case-insensitive): the only hit is this diff's
+      own doc-comment stating "no Gemini reference" in prose, which does
+      NOT match `test_frontend_service_role_boundary.py`'s planned
+      case-sensitive `"GEMINI" in text` substring check (verified against
+      its existing `"SERVICE_ROLE" in text` sibling assertion). No
+      `GEMINI_API_KEY` token, no "Generate" button/label, no fetch to any
+      `.../generate` route anywhere in `product-form.tsx`/`actions.ts`.
+      That guard's Phase-3/5/11-covering parametrization itself is a
+      Phase 6 task (6.9), not yet applied — out of this batch's scope.
 
 ## Phase 4: Public Catalog Blurb Render (PR 4, base = PR 2)
 
