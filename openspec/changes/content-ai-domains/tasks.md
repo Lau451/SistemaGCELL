@@ -161,10 +161,20 @@ UI triggers together.
       pre-existing `test_admin.py` tests green (28 passed, 1 skipped
       needing `db_pool` — separately confirmed green against local
       Supabase). Full backend suite: 432/432 passed.
-- [ ] 2.9 Verify `admin-product-management`/`product-persistence` spec
+- [x] 2.9 Verify `admin-product-management`/`product-persistence` spec
       scenarios: "Product is created with only manually typed copy" (key
       unset), "creatable with both fields blank", "editing updates both
       fields independently".
+      Result: closed out during Phase 12's final sweep (was left unchecked
+      after PR2, caught by the full-file checkbox audit). "Manually typed
+      copy, key unset" is structural: `create_admin_product`/
+      `update_admin_product` (admin.py) depend only on `require_db_pool`,
+      never `require_gemini` -- confirmed by reading both route signatures
+      directly, no `Depends(require_gemini)` anywhere in either. The other
+      two scenarios are covered by 2.7's tests:
+      `test_post_omitting_description_fields_leaves_both_null` (blank
+      fields) and `test_patch_updates_description_fields_independently`
+      (independent field updates), both green in `test_admin.py`.
 
 ## Phase 3: Admin Product Form (PR 3, base = PR 2)
 
@@ -894,14 +904,70 @@ UI triggers together.
 
 ## Phase 12: Final Success-Criteria Sweep
 
-- [ ] 12.1 Confirm `backend/src/gcell/recommendation/` is unchanged (D1) —
+- [x] 12.1 Confirm `backend/src/gcell/recommendation/` is unchanged (D1) —
       zero diff.
-- [ ] 12.2 Confirm `backend/pyproject.toml` has no new runtime dependency
+      Result: `git log --oneline -- backend/src/gcell/recommendation/`
+      shows exactly one commit ever (`6062f59`, the pre-feature FastAPI
+      scaffold) — no content-ai-domains commit (`309c525`..`3e0bc17`,
+      PRs 1-9) touches this path. Confirmed with
+      `git diff b7a4602~1 HEAD -- backend/src/gcell/recommendation/`
+      (`b7a4602~1` = the commit immediately before this change's
+      exploration/proposal doc landed) → 0 lines of diff output.
+- [x] 12.2 Confirm `backend/pyproject.toml` has no new runtime dependency
       (D8) — `httpx` was already present.
-- [ ] 12.3 Confirm `CATALOG_PRODUCT_COLUMNS`, `CatalogProductRow`, and the
+      Result: `git log -p b7a4602~1..HEAD -- backend/pyproject.toml` →
+      zero added/removed lines (empty output) — the file was never
+      touched by this change. Current `dependencies` array: `asyncpg`,
+      `fastapi`, `httpx>=0.28.1`, `pillow`, `pyjwt[crypto]`,
+      `python-multipart` — `httpx` pre-existing, used only for the new
+      Gemini adapter's outbound calls, not added by it.
+- [x] 12.3 Confirm `CATALOG_PRODUCT_COLUMNS`, `CatalogProductRow`, and the
       `catalog_products` view still agree column-for-column, and no query
       anywhere uses `select("*")`.
-- [ ] 12.4 Confirm every Gemini call site is under `ai/infrastructure/`,
+      Result: `CATALOG_PRODUCT_COLUMNS` (`frontend/src/lib/catalog/
+      columns.ts`) = `id,slug,name,description,created_at,
+      short_description`; `CatalogProductRow` (`frontend/src/lib/catalog/
+      types.ts`) has the same 6 fields in the same order;
+      `catalog_products` view (`supabase/migrations/
+      20260817000000_products_short_description.sql`, `CREATE OR REPLACE
+      VIEW ... select id, slug, name, description, created_at,
+      short_description from products where deleted_at is null`) matches
+      exactly. Grepped `select\(['"]\*['"]\)` across `frontend/src` and
+      `select \*` (case-insensitive) across `backend` and `frontend/src`
+      — 0 matches in both; only 2 non-code references to the literal
+      string `select("*")` exist, both in comments explaining the
+      allowlist convention (`columns.ts`, `queries.ts`).
+- [x] 12.4 Confirm every Gemini call site is under `ai/infrastructure/`,
       reachable only through an admin-authenticated route, and grep
       `frontend/` for `GEMINI`/`generateContent`/Gemini SDK names returns
       nothing.
+      Result: the only outbound Gemini HTTP call (`httpx.AsyncClient`
+      against `https://generativelanguage.googleapis.com`) is in
+      `backend/src/gcell/ai/infrastructure/gemini_content_generator.py`
+      (`GeminiContentGenerator.generate_json`). Both call sites that
+      construct/use it —
+      `POST /admin/products/{product_id}/copy/generate` and
+      `POST /admin/products/{product_id}/images/{image_id}/alt-text/
+      generate` in `backend/src/gcell/api/admin.py` — live on
+      `router = APIRouter(prefix="/admin", ...,
+      dependencies=[Depends(verify_admin_jwt)])`, so both are
+      admin-JWT-gated. All other backend files matching `Gemini|GEMINI`
+      (`api/admin.py` wiring, `content/application/*.py` docstrings/
+      error messages, `content/domain/copy_draft.py`,
+      `shared/infrastructure/{dependencies,config}.py` env-var plumbing,
+      `ai/application/content_generator.py`, `ai/domain/generation.py`)
+      are comments, the `GeminiCredentials` dataclass, or
+      `GEMINI_API_KEY`/`GEMINI_MODEL` env-var reads — no second network
+      call site. `grep -rni "gemini|generateContent|@google/generative"
+      frontend/src` is NOT literally empty: it returns 5 lines — the
+      string literal `"gemini_unavailable"` (a backend-defined error
+      code rendered as UI text) in `image-manager.test.tsx` (x2) and
+      `product-form.test.tsx` (x2), and one comment in
+      `product-form.tsx` line 40 explicitly stating "no Gemini
+      [call/dependency]" for that form. None is a Gemini SDK import,
+      `fetch`/`generateContent` call, or API key reference — confirmed
+      no `@google/generative*` package in `frontend/package.json` and no
+      `GEMINI_API_KEY`-shaped env read anywhere under `frontend/src`.
+      Net finding: frontend never calls Gemini directly, but the task's
+      literal "returns nothing" wording is not exactly true — recorded
+      here rather than silently rounded to a clean pass.

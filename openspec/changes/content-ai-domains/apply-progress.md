@@ -1421,5 +1421,118 @@ None.
   PR 11's merge criteria per the task's own text.
 - Phase 12 (final success-criteria sweep — `recommendation/` zero diff,
   `pyproject.toml` no new dependency, catalog column/view agreement,
-  every Gemini call site confined to `ai/infrastructure/`) untouched, as
-  instructed — a separate follow-up batch.
+  every Gemini call site confined to `ai/infrastructure/`) untouched at
+  the time this batch was written — completed in a separate follow-up
+  batch; see the "Phase 12" section below.
+
+## Phase 12 — Final Success-Criteria Sweep
+
+Verification-only batch (tasks 12.1-12.4). No production code was
+touched — every task confirmed cleanly, with one minor finding recorded
+below rather than silently rounded to a clean pass.
+
+### 12.1 — `backend/src/gcell/recommendation/` unchanged (D1)
+
+`git log --oneline -- backend/src/gcell/recommendation/` returns exactly
+one commit across the whole repo history: `6062f59` ("scaffold uv-managed
+FastAPI hexagonal backend"), which predates content-ai-domains entirely.
+`git diff b7a4602~1 HEAD -- backend/src/gcell/recommendation/` (diffing
+from immediately before this change's exploration doc to current HEAD)
+produced zero lines of output. Zero diff confirmed.
+
+### 12.2 — `backend/pyproject.toml` no new runtime dependency (D8)
+
+`git log -p b7a4602~1..HEAD -- backend/pyproject.toml` produced zero
+added/removed lines — the file was never modified across all 11 PRs of
+this change. Current `dependencies`: `asyncpg`, `fastapi`,
+`httpx>=0.28.1`, `pillow`, `pyjwt[crypto]`, `python-multipart` — `httpx`
+was already present before this change and is reused (not newly added)
+by the Gemini `httpx` adapter (PR 7).
+
+### 12.3 — Catalog column/view agreement, no `select("*")`
+
+`CATALOG_PRODUCT_COLUMNS` (`frontend/src/lib/catalog/columns.ts`) =
+`id,slug,name,description,created_at,short_description`.
+`CatalogProductRow` (`frontend/src/lib/catalog/types.ts`) declares the
+same 6 fields, same order. The `catalog_products` view (per
+`supabase/migrations/20260817000000_products_short_description.sql`,
+which `CREATE OR REPLACE VIEW`s it) selects
+`id, slug, name, description, created_at, short_description from
+products where deleted_at is null` — exact column-for-column match.
+Grepped `select\(['"]\*['"]\)` (case-sensitive, `frontend/src`) and
+`select \*` (case-insensitive, `backend` and `frontend/src`) — 0 code
+matches in either sweep; the only 2 hits for the literal string
+`select("*")` anywhere are comments in `columns.ts` and `queries.ts`
+documenting the allowlist convention, not actual queries.
+
+### 12.4 — Gemini call-site confinement + admin-auth gating + frontend isolation
+
+The single outbound Gemini HTTP call (`httpx.AsyncClient` against
+`https://generativelanguage.googleapis.com`) lives in
+`backend/src/gcell/ai/infrastructure/gemini_content_generator.py`
+(`GeminiContentGenerator.generate_json`). Its two call sites —
+`POST /admin/products/{product_id}/copy/generate` and
+`POST /admin/products/{product_id}/images/{image_id}/alt-text/generate`
+in `backend/src/gcell/api/admin.py` — both live on
+`router = APIRouter(prefix="/admin", ...,
+dependencies=[Depends(verify_admin_jwt)])`, so both require a valid
+admin JWT. Every other backend match for `Gemini|GEMINI` across 9 files
+(`api/admin.py`, `content/application/generate_image_alt_text.py`,
+`content/application/generate_product_copy.py`,
+`content/application/product_context_reader.py`,
+`content/domain/copy_draft.py`, `shared/application/object_storage.py`,
+`shared/infrastructure/dependencies.py`,
+`shared/infrastructure/config.py`, `ai/application/content_generator.py`,
+`ai/domain/generation.py`) is a docstring/comment, the `GeminiCredentials`
+dataclass (holds `api_key`/`model`, makes no network call itself), or
+`GEMINI_API_KEY`/`GEMINI_MODEL` env-var plumbing — no second call site
+exists.
+
+**Finding (not a regression, recorded for accuracy):** the task's exact
+wording — "grep `frontend/` for `GEMINI`/`generateContent`/Gemini SDK
+names returns nothing" — is not literally true.
+`grep -rni "gemini|generateContent|@google/generative" frontend/src`
+returns 5 lines: the string literal `"gemini_unavailable"` (a
+backend-defined 503 error code, rendered verbatim as UI/test text) in
+`image-manager.test.tsx` (2 occurrences) and `product-form.test.tsx` (2
+occurrences), plus one prose comment in `product-form.tsx:40`
+explicitly stating that field has "no Gemini [call/dependency]". None of
+these 5 is a Gemini SDK import, a `fetch`/`generateContent` invocation,
+or an API key reference. `frontend/package.json` has no
+`@google/generative*` (or similarly named) dependency, and no
+`GEMINI_API_KEY`-shaped env read exists anywhere under `frontend/src`.
+Substantively, the success criterion holds — frontend never calls
+Gemini — but the literal grep is not empty, so this is logged rather
+than silently asserted clean.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | N/A — this batch is read-only verification (git log/diff, grep, file reads); no code changed, so no test suite run was required or performed. |
+| Runtime harness command/scenario and exact result | N/A — no runtime boundary crossed; nothing executes differently before/after this batch. |
+| Rollback boundary | `openspec/changes/content-ai-domains/tasks.md` (Phase 12 checkboxes + Result notes) and this file (`apply-progress.md`, Phase 12 section) are the only files touched; reverting both fully reverts this batch with zero effect on any other phase's work. |
+
+### Status after this batch
+
+All of Phase 12 (12.1-12.4) is now `[x]`. Final full-file sweep
+(`grep -n "^- \[ \]" tasks.md`) shows exactly 2 remaining unchecked
+boxes in the whole document:
+
+- **11.10** — explicitly out of scope by its own task text (optional
+  manual verification against a real `GEMINI_API_KEY`, not available in
+  this headless environment, "not required for merge"). Permanently
+  left unchecked by design, per prior batches.
+- **2.9** — "Verify `admin-product-management`/`product-persistence`
+  spec scenarios: 'Product is created with only manually typed copy'
+  (key unset), 'creatable with both fields blank', 'editing updates
+  both fields independently'." This was NOT assigned to this batch
+  (Phase 12 only covered 12.1-12.4) and was left unmarked by whichever
+  earlier PR 2 batch implemented Phase 2 — it appears substantively
+  covered by 2.7's RED tests
+  (`test_post_with_description_fields_persists_and_echoes_both`,
+  `test_post_omitting_description_fields_leaves_both_null`,
+  `test_patch_updates_description_fields_independently`, all green per
+  2.8's Result note) but was never explicitly re-verified and checked
+  off as its own task. Flagged here, left untouched, and NOT marked
+  `[x]` — outside this batch's assigned scope to fix or claim.
