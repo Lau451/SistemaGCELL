@@ -184,6 +184,34 @@ async def test_reorder_writes_sequential_sort_order_atomically(db_conn) -> None:
     assert [row["sort_order"] for row in rows] == [0, 1, 2]
 
 
+async def test_update_alt_text_changes_only_alt_text(db_conn) -> None:
+    """spec: product-persistence "adapters agree on image operations",
+    extended by design.md DD3's `update_alt_text` port method.
+    """
+    product = make_product()
+    product_repository = PostgresProductRepository(db_conn)
+    image_repository = PostgresProductImageRepository(db_conn)
+    await product_repository.add(product)
+    image = make_image(product_id=product.id, alt_text="")
+    await image_repository.add(image)
+
+    await image_repository.update_alt_text(image.id, "A red case")
+
+    updated = await image_repository.get_by_id(image.id)
+    assert updated is not None
+    assert updated.alt_text == "A red case"
+    assert updated.storage_path == image.storage_path
+    assert updated.sort_order == image.sort_order
+    assert updated.variant_id == image.variant_id
+
+
+async def test_update_alt_text_unknown_image_raises_image_not_found_error(db_conn) -> None:
+    image_repository = PostgresProductImageRepository(db_conn)
+
+    with pytest.raises(ImageNotFoundError):
+        await image_repository.update_alt_text(uuid4(), "whatever")
+
+
 async def test_get_by_id_returns_none_for_unknown_id(db_conn) -> None:
     image_repository = PostgresProductImageRepository(db_conn)
 

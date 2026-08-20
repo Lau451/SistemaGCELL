@@ -98,6 +98,28 @@ async def test_next_sort_order_is_independent_per_hero_and_variant_group() -> No
     assert await repository.next_sort_order(product_id, variant_id) == 2
 
 
+async def test_update_alt_text_changes_only_alt_text() -> None:
+    repository = InMemoryProductImageRepository()
+    image = make_image(alt_text="")
+    await repository.add(image)
+
+    await repository.update_alt_text(image.id, "A red case")
+
+    updated = await repository.get_by_id(image.id)
+    assert updated is not None
+    assert updated.alt_text == "A red case"
+    assert updated.storage_path == image.storage_path
+    assert updated.sort_order == image.sort_order
+    assert updated.variant_id == image.variant_id
+
+
+async def test_update_alt_text_unknown_image_raises_image_not_found_error() -> None:
+    repository = InMemoryProductImageRepository()
+
+    with pytest.raises(ImageNotFoundError):
+        await repository.update_alt_text(uuid4(), "whatever")
+
+
 async def test_reorder_writes_sequential_sort_order_scoped_to_product() -> None:
     repository = InMemoryProductImageRepository()
     product_id = uuid4()

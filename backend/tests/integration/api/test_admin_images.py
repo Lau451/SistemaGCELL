@@ -66,7 +66,15 @@ def _spy(calls: list[str], label: str) -> Callable:
 
 
 def _spy_all_adapters(monkeypatch, calls: list[str]) -> None:
-    for name in ("add", "get_by_id", "list_for_product", "delete", "next_sort_order", "reorder"):
+    for name in (
+        "add",
+        "get_by_id",
+        "list_for_product",
+        "delete",
+        "next_sort_order",
+        "reorder",
+        "update_alt_text",
+    ):
         monkeypatch.setattr(
             PostgresProductImageRepository, name, _spy(calls, f"image_repo.{name}"), raising=False
         )
@@ -82,6 +90,8 @@ def _request_kwargs(kind: str | None):
         return {"files": {"file": ("test.png", _valid_png_bytes(), "image/png")}}
     if kind == "json":
         return {"json": {"image_ids": []}}
+    if kind == "alt-text-json":
+        return {"json": {"alt_text": "A red case"}}
     return {}
 
 
@@ -90,6 +100,9 @@ _IMAGE_ROUTES = [
     pytest.param("POST", "/images", "multipart", id="upload-image"),
     pytest.param("DELETE", f"/images/{uuid4()}", None, id="delete-image"),
     pytest.param("PUT", "/images/order", "json", id="reorder-images"),
+    pytest.param(
+        "PATCH", f"/images/{uuid4()}", "alt-text-json", id="update-alt-text"
+    ),
 ]
 
 _STORAGE_TOUCHING_ROUTES = [
@@ -438,6 +451,139 @@ def test_reorder_admin_product_images_foreign_id_returns_404_and_zero_writes(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "not_found"}
+    assert calls == []
+
+
+def test_update_admin_product_image_alt_text_returns_200(monkeypatch) -> None:
+    product_id = uuid4()
+    image = ProductImage(
+        id=uuid4(),
+        product_id=product_id,
+        variant_id=None,
+        storage_path="test-product/hero-abc123456789.webp",
+        alt_text="",
+        sort_order=0,
+    )
+    update_calls: list[tuple] = []
+
+    async def fake_get_by_id(self, image_id):
+        return image if image_id == image.id else None
+
+    async def fake_update_alt_text(self, image_id, alt_text):
+        update_calls.append((image_id, alt_text))
+
+    monkeypatch.setattr(PostgresProductImageRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresProductImageRepository, "update_alt_text", fake_update_alt_text
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.patch(
+            f"/admin/products/{product_id}/images/{image.id}",
+            json={"alt_text": "A red case"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(image.id)
+    assert body["alt_text"] == "A red case"
+    assert body["storage_path"] == image.storage_path
+    assert body["sort_order"] == image.sort_order
+    assert update_calls == [(image.id, "A red case")]
+
+
+def test_update_admin_product_image_alt_text_cross_product_returns_404_not_403(
+    monkeypatch,
+) -> None:
+    product_a_id = uuid4()
+    product_b_id = uuid4()
+    image_of_b = ProductImage(
+        id=uuid4(),
+        product_id=product_b_id,
+        variant_id=None,
+        storage_path="product-b/hero-abc123456789.webp",
+        alt_text="Belongs to B",
+        sort_order=0,
+    )
+    calls: list[str] = []
+
+    async def fake_get_by_id(self, image_id):
+        return image_of_b if image_id == image_of_b.id else None
+
+    monkeypatch.setattr(PostgresProductImageRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresProductImageRepository,
+        "update_alt_text",
+        _spy(calls, "image_repo.update_alt_text"),
+    )
+    token = make_valid_admin_token()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.patch(
+            f"/admin/products/{product_a_id}/images/{image_of_b.id}",
+            json={"alt_text": "Hijacked"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "not_found"}
+    assert calls == []
+
+
+def test_update_admin_product_image_alt_text_unknown_id_returns_404(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def fake_get_by_id(self, image_id):
+        return None
+
+    monkeypatch.setattr(PostgresProductImageRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(
+        PostgresProductImageRepository,
+        "update_alt_text",
+        _spy(calls, "image_repo.update_alt_text"),
+    )
+    token = make_valid_admin_token()
+    product_id = uuid4()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.patch(
+            f"/admin/products/{product_id}/images/{uuid4()}",
+            json={"alt_text": "whatever"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "not_found"}
+    assert calls == []
+
+
+def test_update_admin_product_image_alt_text_missing_key_returns_422(monkeypatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        PostgresProductImageRepository,
+        "update_alt_text",
+        _spy(calls, "image_repo.update_alt_text"),
+    )
+    monkeypatch.setattr(
+        PostgresProductImageRepository, "get_by_id", _spy(calls, "image_repo.get_by_id")
+    )
+    token = make_valid_admin_token()
+    product_id = uuid4()
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.patch(
+            f"/admin/products/{product_id}/images/{uuid4()}",
+            json={},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 422
     assert calls == []
 
 

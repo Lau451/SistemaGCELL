@@ -13,6 +13,7 @@ never asked to replicate.
 tombstone -- matching the Postgres adapter's real `DELETE`.
 """
 
+from dataclasses import replace
 from uuid import UUID
 
 from gcell.products.application.exceptions import ImageNotFoundError
@@ -59,3 +60,9 @@ class InMemoryProductImageRepository:
                 alt_text=image.alt_text,
                 sort_order=sort_order,
             )
+
+    async def update_alt_text(self, image_id: UUID, alt_text: str | None) -> None:
+        image = self._images_by_id.get(image_id)
+        if image is None:
+            raise ImageNotFoundError(image_id)
+        self._images_by_id[image_id] = replace(image, alt_text=alt_text)

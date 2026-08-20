@@ -28,7 +28,7 @@
  *
  * @see design.md "Data Flow", "Decision 6: Reorder", "Decision 8"
  */
-import { useActionState, useEffect, useMemo, useRef, useTransition } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { toPublicPhotoUrl } from "@/lib/catalog/storage-url";
@@ -36,6 +36,7 @@ import { getCatalogSupabaseEnv } from "@/lib/supabase/env";
 import {
   deleteProductImageAction,
   reorderProductImagesAction,
+  updateProductImageAltTextAction,
   uploadProductImageAction,
   type ProductFormState,
 } from "./actions";
@@ -83,6 +84,10 @@ export function ImageManager({
   const router = useRouter();
   const [isMutating, startMutating] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
+  const altTextRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [altTextErrors, setAltTextErrors] = useState<Record<string, string>>(
+    {},
+  );
   // `images` intentionally has NO local `useState`: `initialImages` is the
   // single source of truth (server-fetched, revalidated via `revalidatePath`
   // inside every Server Action), and `router.refresh()` after each mutation
@@ -118,6 +123,31 @@ export function ImageManager({
 
     startMutating(async () => {
       await deleteProductImageAction(formData);
+      router.refresh();
+    });
+  }
+
+  function handleSaveAltText(imageId: string) {
+    const altText = altTextRefs.current[imageId]?.value ?? "";
+    const formData = new FormData();
+    formData.set("product-id", productId);
+    formData.set("image-id", imageId);
+    formData.set("alt-text", altText);
+
+    startMutating(async () => {
+      const result = await updateProductImageAltTextAction(formData);
+      if (result.error) {
+        setAltTextErrors((previous) => ({
+          ...previous,
+          [imageId]: result.error as string,
+        }));
+        return;
+      }
+      setAltTextErrors((previous) =>
+        Object.fromEntries(
+          Object.entries(previous).filter(([id]) => id !== imageId),
+        ),
+      );
       router.refresh();
     });
   }
@@ -229,6 +259,36 @@ export function ImageManager({
               <span className="text-muted-foreground text-xs">
                 {image.storage_path}
               </span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor={`alt-text-${image.id}`}
+                className="text-sm font-medium"
+              >
+                Alt text
+              </label>
+              <input
+                id={`alt-text-${image.id}`}
+                type="text"
+                defaultValue={image.alt_text ?? ""}
+                ref={(el) => {
+                  altTextRefs.current[image.id] = el;
+                }}
+                className="border-border rounded-md border px-2 py-1 text-sm"
+              />
+              {altTextErrors[image.id] && (
+                <p role="alert" className="text-destructive text-sm">
+                  {altTextErrors[image.id]}
+                </p>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isMutating}
+                onClick={() => handleSaveAltText(image.id)}
+              >
+                Save alt text
+              </Button>
             </div>
             <div className="ml-auto flex items-center gap-2">
               <Button

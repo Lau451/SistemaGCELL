@@ -14,12 +14,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const UPLOAD_ACTION = vi.fn();
 const DELETE_ACTION = vi.fn();
 const REORDER_ACTION = vi.fn();
+const UPDATE_ALT_TEXT_ACTION = vi.fn();
 const ROUTER_REFRESH = vi.fn();
 
 vi.mock("./actions", () => ({
   uploadProductImageAction: (...args: unknown[]) => UPLOAD_ACTION(...args),
   deleteProductImageAction: (...args: unknown[]) => DELETE_ACTION(...args),
   reorderProductImagesAction: (...args: unknown[]) => REORDER_ACTION(...args),
+  updateProductImageAltTextAction: (...args: unknown[]) =>
+    UPDATE_ALT_TEXT_ACTION(...args),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -241,6 +244,81 @@ describe("ImageManager", () => {
     expect(downButtons[0]).not.toBeDisabled();
     expect(upButtons[1]).not.toBeDisabled();
     expect(downButtons[1]).toBeDisabled();
+  });
+
+  it("renders alt text as an editable field on an already-uploaded image, pre-filled with its current value", async () => {
+    const ImageManager = await importImageManager();
+
+    render(
+      <ImageManager
+        productId="p1"
+        variants={VARIANTS}
+        initialImages={IMAGES}
+      />,
+    );
+
+    const altTextInputs = screen.getAllByLabelText(/^alt text$/i);
+    expect(altTextInputs).toHaveLength(2);
+    expect(altTextInputs[0]).toHaveValue("Hero shot");
+    expect(altTextInputs[1]).toHaveValue("");
+  });
+
+  it("saves an edited alt text via updateProductImageAltTextAction and refreshes the router", async () => {
+    UPDATE_ALT_TEXT_ACTION.mockResolvedValue({ error: null });
+    const user = userEvent.setup();
+    const ImageManager = await importImageManager();
+
+    render(
+      <ImageManager
+        productId="p1"
+        variants={VARIANTS}
+        initialImages={IMAGES}
+      />,
+    );
+
+    const [firstAltTextInput] = screen.getAllByLabelText(/^alt text$/i);
+    await user.clear(firstAltTextInput);
+    await user.type(firstAltTextInput, "Updated alt text");
+    const [firstSaveButton] = screen.getAllByRole("button", {
+      name: /save alt text/i,
+    });
+    await user.click(firstSaveButton);
+
+    await waitFor(() => {
+      expect(UPDATE_ALT_TEXT_ACTION).toHaveBeenCalledTimes(1);
+    });
+    const [formData] = UPDATE_ALT_TEXT_ACTION.mock.calls[0] as [FormData];
+    expect(formData.get("product-id")).toBe("p1");
+    expect(formData.get("image-id")).toBe("img1");
+    expect(formData.get("alt-text")).toBe("Updated alt text");
+
+    await waitFor(() => {
+      expect(ROUTER_REFRESH).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("surfaces an alt-text save error via role=alert", async () => {
+    UPDATE_ALT_TEXT_ACTION.mockResolvedValue({ error: "Image not found" });
+    const user = userEvent.setup();
+    const ImageManager = await importImageManager();
+
+    render(
+      <ImageManager
+        productId="p1"
+        variants={VARIANTS}
+        initialImages={IMAGES}
+      />,
+    );
+
+    const [firstSaveButton] = screen.getAllByRole("button", {
+      name: /save alt text/i,
+    });
+    await user.click(firstSaveButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Image not found");
+    });
+    expect(ROUTER_REFRESH).not.toHaveBeenCalled();
   });
 
   it("moves an image down and calls reorderProductImagesAction with the new order", async () => {

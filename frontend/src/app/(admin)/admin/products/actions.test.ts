@@ -655,6 +655,96 @@ describe("reorderProductImagesAction", () => {
   });
 });
 
+describe("updateProductImageAltTextAction", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("relays a PATCH with the alt text as JSON and revalidates on 200", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 200,
+      body: { id: "img1", alt_text: "Updated alt text" },
+    });
+
+    const { updateProductImageAltTextAction } = await importActions();
+    const result = await updateProductImageAltTextAction(
+      formDataFor({
+        "product-id": "p1",
+        "image-id": "img1",
+        "alt-text": "Updated alt text",
+      }),
+    );
+
+    expect(ADMIN_BACKEND_FETCH).toHaveBeenCalledWith(
+      "/admin/products/p1/images/img1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: { alt_text: "Updated alt text" },
+      }),
+    );
+    expect(REVALIDATE_PATH).toHaveBeenCalledWith("/admin/products/p1");
+    expect(result.error).toBeNull();
+  });
+
+  it("relays a blank alt text as an explicit null (DD3: clears the column)", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 200,
+      body: { id: "img1", alt_text: null },
+    });
+
+    const { updateProductImageAltTextAction } = await importActions();
+    await updateProductImageAltTextAction(
+      formDataFor({ "product-id": "p1", "image-id": "img1", "alt-text": "   " }),
+    );
+
+    expect(ADMIN_BACKEND_FETCH).toHaveBeenCalledWith(
+      "/admin/products/p1/images/img1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: { alt_text: null },
+      }),
+    );
+  });
+
+  it("on 404 (cross-parent image id), returns an error state and does NOT revalidate", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 404,
+      body: { detail: "not_found" },
+    });
+
+    const { updateProductImageAltTextAction } = await importActions();
+    const result = await updateProductImageAltTextAction(
+      formDataFor({
+        "product-id": "p1",
+        "image-id": "img1",
+        "alt-text": "Hijacked",
+      }),
+    );
+
+    expect(result.error).toBeTruthy();
+    expect(REVALIDATE_PATH).not.toHaveBeenCalled();
+  });
+
+  it("on unauthenticated outcome, redirects to /admin/login", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({ outcome: "unauthenticated" });
+
+    const { updateProductImageAltTextAction } = await importActions();
+    await updateProductImageAltTextAction(
+      formDataFor({
+        "product-id": "p1",
+        "image-id": "img1",
+        "alt-text": "whatever",
+      }),
+    );
+
+    expect(REDIRECT).toHaveBeenCalledWith("/admin/login");
+  });
+});
+
 describe("retireVariantAction", () => {
   afterEach(() => {
     vi.resetModules();

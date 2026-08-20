@@ -270,6 +270,47 @@ export async function deleteProductImageAction(
 }
 
 /**
+ * Update an image's alt text — DD3's dedicated `PATCH .../images/{id}`
+ * route, independent of re-uploading the file. `alt_text` is a REQUIRED
+ * key on the backend's write model (`str | None`, no default) — a blank
+ * submitted value is relayed as an explicit `null` to clear the column
+ * (design.md DD3: "an explicit null/blank-after-strip clears the column
+ * — the only way to undo bad alt text"), never omitted. Same
+ * FormData-via-manual-construction + fire pattern as
+ * `deleteProductImageAction`, but returns a `ProductFormState` (like
+ * `reorderProductImagesAction`) so `image-manager.tsx` can surface a
+ * failed save (e.g. a stale/cross-parent image id) via `role=alert`.
+ */
+export async function updateProductImageAltTextAction(
+  formData: FormData,
+): Promise<ProductFormState> {
+  const productId = String(formData.get("product-id") ?? "");
+  const imageId = String(formData.get("image-id") ?? "");
+  const raw = formData.get("alt-text");
+  const altText = typeof raw === "string" && raw.trim() !== "" ? raw : null;
+
+  const result = await adminBackendFetch(
+    `/admin/products/${productId}/images/${imageId}`,
+    { method: "PATCH", body: { alt_text: altText } },
+  );
+
+  if (result.outcome === "unauthenticated") {
+    redirect(ADMIN_LOGIN_PATH);
+  }
+
+  if (result.outcome === "backend_unavailable") {
+    return { error: BACKEND_UNAVAILABLE_MESSAGE };
+  }
+
+  if (result.status === 200) {
+    revalidatePath(adminProductDetailPath(productId));
+    return { error: null };
+  }
+
+  return { error: extractAdminError(result.status, result.body) };
+}
+
+/**
  * Reorder a product's images — design.md Decision 6: the full ordered id
  * list, not deltas. Called directly from the (Phase 7) drag-reorder UI
  * rather than bound to a `<form>` submit, so it takes plain arguments

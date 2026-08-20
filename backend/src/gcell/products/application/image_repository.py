@@ -57,3 +57,13 @@ class ProductImageRepository(Protocol):
         port's.
         """
         ...
+
+    async def update_alt_text(self, image_id: UUID, alt_text: str | None) -> None:
+        """Persist a new `alt_text` value, changing no other column
+        (design.md DD3). Raises `ImageNotFoundError` if zero rows were
+        affected -- same zero-rows-affected contract as `delete`. Ownership
+        (does `image_id` belong to the caller's product) is a use-case-
+        layer concern (`UpdateProductImageAltTextUseCase`), not this
+        port's -- this method trusts its caller already resolved that.
+        """
+        ...

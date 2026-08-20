@@ -68,6 +68,8 @@ _UPDATE_SORT_ORDER = """
     UPDATE product_images SET sort_order = $1 WHERE id = $2 AND product_id = $3
 """
 
+_UPDATE_ALT_TEXT = "UPDATE product_images SET alt_text = $1 WHERE id = $2"
+
 
 def _rows_affected(command_tag: str) -> int:
     """asyncpg's `execute()` returns a command tag like `"DELETE 1"` --
@@ -133,3 +135,8 @@ class PostgresProductImageRepository:
                     for sort_order, image_id in enumerate(ordered_image_ids)
                 ],
             )
+
+    async def update_alt_text(self, image_id: UUID, alt_text: str | None) -> None:
+        result = await self._conn.execute(_UPDATE_ALT_TEXT, alt_text, image_id)
+        if _rows_affected(result) == 0:
+            raise ImageNotFoundError(image_id)

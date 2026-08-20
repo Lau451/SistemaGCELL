@@ -83,9 +83,19 @@ async def test_insert_reorder_delete_produce_same_final_state_on_both_adapters(
         # variant_first (the new middle position).
         await repository.reorder(product.id, [variant_second.id, hero.id, variant_first.id])
         await repository.delete(variant_first.id)
+        # update_alt_text (design.md DD3) -- extends the same round-trip
+        # proof to the new port method.
+        await repository.update_alt_text(hero.id, "Updated alt text")
 
     postgres_final = await postgres_repository.list_for_product(product.id)
     memory_final = await memory_repository.list_for_product(product.id)
 
     assert len(postgres_final) == 2
     assert _snapshot(postgres_final) == _snapshot(memory_final)
+
+    postgres_hero = await postgres_repository.get_by_id(hero.id)
+    memory_hero = await memory_repository.get_by_id(hero.id)
+    assert postgres_hero is not None
+    assert memory_hero is not None
+    assert postgres_hero.alt_text == "Updated alt text"
+    assert memory_hero.alt_text == "Updated alt text"

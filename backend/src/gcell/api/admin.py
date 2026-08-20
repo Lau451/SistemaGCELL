@@ -50,6 +50,9 @@ from gcell.products.application.retire_product import (
 )
 from gcell.products.application.slug import SlugGenerationExhaustedError
 from gcell.products.application.update_product import UpdateProductUseCase
+from gcell.products.application.update_product_image_alt_text import (
+    UpdateProductImageAltTextUseCase,
+)
 from gcell.products.application.upload_product_image import UploadProductImageUseCase
 from gcell.products.domain.product import Product, ProductVariant
 from gcell.products.domain.product_image import ProductImage
@@ -511,6 +514,38 @@ async def reorder_admin_product_images(
 
     images = await _execute_or_raise(_reorder())
     return [AdminProductImageResponse.from_domain(image) for image in images]
+
+
+class AdminUpdateImageAltTextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Required key, no default (design.md DD3) -- a body omitting it is
+    # 422; an explicit `null` (or a value that is blank after stripping,
+    # handled by the use case) clears the column, the only way to undo
+    # bad alt text.
+    alt_text: str | None
+
+
+@router.patch("/products/{product_id}/images/{image_id}")
+async def update_admin_product_image_alt_text(
+    product_id: UUID,
+    image_id: UUID,
+    body: AdminUpdateImageAltTextRequest,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+) -> AdminProductImageResponse:
+    # No `require_storage` dependency -- this route never touches
+    # `ObjectStorage` (design.md DD3, same reasoning as GET/reorder above).
+    async def _update() -> ProductImage:
+        async with pool.acquire() as conn:
+            use_case = UpdateProductImageAltTextUseCase(
+                image_repository=PostgresProductImageRepository(conn)
+            )
+            return await use_case.execute(
+                product_id=product_id, image_id=image_id, alt_text=body.alt_text
+            )
+
+    image = await _execute_or_raise(_update())
+    return AdminProductImageResponse.from_domain(image)
 
 
 # ---------------------------------------------------------------------------
