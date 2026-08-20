@@ -579,13 +579,25 @@ UI triggers together.
 
 ## Phase 9: `content` Text-Generation Use Case (PR 9, base = PR 7 + PR 8)
 
-- [ ] 9.1 RED `backend/tests/unit/content/test_copy_draft.py` — over-cap
+- [x] 9.1 RED `backend/tests/unit/content/test_copy_draft.py` — over-cap
       output trims at the last word boundary within the cap (blurb 160,
       body 1200 chars, DD4).
-- [ ] 9.2 GREEN `backend/src/gcell/content/domain/copy_draft.py` —
+      Result: new file, 12 tests across `TestCaps`/`TestTrimToCap`/
+      `TestProductCopyDraft`/`TestAltTextDraft` — cap-value assertions,
+      within-cap/at-cap no-op, over-cap word-boundary trim for all three
+      caps (160/1200/125), the documented no-space-within-cap hard-cut
+      residual, and both draft dataclasses' field shapes. Confirmed RED
+      (`ModuleNotFoundError: No module named 'gcell.content.domain.copy_draft'`)
+      before 9.2.
+- [x] 9.2 GREEN `backend/src/gcell/content/domain/copy_draft.py` —
       `ProductCopyDraft`, `AltTextDraft`, the three caps (160/1200/125),
       `trim_to_cap`.
-- [ ] 9.3 RED `backend/tests/unit/content/test_generate_product_copy.py`
+      Result: done, matches design.md's DD4 table verbatim (word-boundary
+      trim via `rfind(" ")`, hard-cut fallback documented as the residual
+      when no space exists within the cap). 12/12 9.1 tests green.
+      `AltTextDraft` created but has zero producing use case until PR 10,
+      as the task text anticipates.
+- [x] 9.3 RED `backend/tests/unit/content/test_generate_product_copy.py`
       (fake `ContentGenerator` + fake `ProductContextReader`) — both fields
       returned → draft (spec "One click yields both draft fields", exactly
       one Gemini call, D10); one field blank/missing → `200`-shaped draft
@@ -595,12 +607,46 @@ UI triggers together.
       "Price is absent from the generation input"); a product `name`
       containing instruction-like text still yields schema-shaped output
       that writes nothing (Threat-Matrix "Prompt injection" row).
-- [ ] 9.4 GREEN `backend/src/gcell/content/application/generate_product_copy.py`
+      Result: new file, 10 tests across 6 classes. The no-price test uses
+      the REAL PR-8 `ProductsContextReader` adapter over an in-memory
+      `products` repository holding a `Product` with two variants of
+      different prices (`199.99`/`349.50`), asserting neither price
+      string appears in the captured instruction — proves price is
+      stripped by the actual DD2 seam, not just absent from a fake DTO.
+      Also added `TestOverCapTrimming` (per-field cap application) and
+      `TestNoWriteSideEffect` (unknown product id raises before any
+      Gemini call, zero generator calls) — implied by design.md's DD4/D5
+      but not spelled out in this task's own text. Confirmed RED
+      (`ModuleNotFoundError: No module named
+      'gcell.content.application.generate_product_copy'`) before 9.4.
+- [x] 9.4 GREEN `backend/src/gcell/content/application/generate_product_copy.py`
       — builds the `es-AR` prompt (name/model/colors only), calls
       `ContentGenerator.generate_json` exactly once, applies per-field caps.
-- [ ] 9.5 Verify spec `admin-ai-content-authoring` "Generating copy does not
+      Result: `GenerateProductCopyUseCase(content_generator, context_reader)`
+      — `_LANGUAGE = "es-AR"` module constant (hardcoded, not
+      configurable, per design.md DD4); `_RESPONSE_SCHEMA` matches
+      design.md's Interfaces/Contracts JSON shape verbatim; prompt built
+      only from `ProductCopyContext.{name,model,colors}`. Partial-output
+      policy: both blank/missing → `GenerationError`; exactly one
+      blank/missing → draft with that field `None`; each present field
+      independently trimmed via `trim_to_cap`. Unknown product id →
+      `ProductNotFoundError` (reused from
+      `products.application.exceptions` — a plain exception-type import,
+      not a repository dependency; content→products stays an allowed
+      DD5 edge) raised before any Gemini call. 10/10 9.3 tests green.
+- [x] 9.5 Verify spec `admin-ai-content-authoring` "Generating copy does not
       persist anything": the use case's only dependencies are
       `ContentGenerator` and `ProductContextReader` — no repository import.
+      Result: confirmed — `GenerateProductCopyUseCase`'s only two
+      constructor fields are `content_generator: ContentGenerator` and
+      `context_reader: ProductContextReader`; grepped the file for
+      `.add(`/`.update(`/`.soft_delete(`/`.delete(`/`Repository`: zero
+      matches beyond doc-comment prose. `test_domain_dependencies.py`
+      (DD5, `content: {ai, products}`) and `test_domain_boundary.py` both
+      still green (271/271 `tests/unit` + `tests/architecture`). Full
+      backend suite: 363 passed, 135 skipped (pre-existing
+      `db_pool`-dependent tests, no local Supabase running at apply
+      time — same documented pattern as PR 6-8), 0 failed.
 
 ## Phase 10: `content` Image-Generation Use Case (PR 10, base = PR 9)
 

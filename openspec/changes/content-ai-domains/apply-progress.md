@@ -878,3 +878,149 @@ None.
   spec-scenario test file — none was assigned in this task's scope, and
   no route exists yet to exercise the scenario end-to-end (that lands in
   PR 11).
+
+## PR 9 — `content` Text-Generation Use Case (Phase 9, tasks 9.1-9.5)
+
+Status: Complete (9.1-9.5; all five tasks assigned to this batch).
+
+Ships `GenerateProductCopyUseCase` — the first actual caller of both PR
+7's `ContentGenerator` port and PR 8's `ProductContextReader` port,
+wiring them together to produce a draft `ProductCopyDraft` in exactly one
+Gemini call (D10). This PR is still inert: no route calls it yet
+(wiring is PR 11). Base = PR 7 + PR 8 (needs `ContentGenerator`/
+`GenerationError` and `ProductContextReader`/`ProductCopyContext`, both
+already shipped).
+
+Strict TDD followed throughout: both RED test files were written first
+and confirmed failing (`ModuleNotFoundError`) before their paired GREEN
+implementation.
+
+### Files changed
+
+- `backend/tests/unit/content/test_copy_draft.py` (new) — 12 tests
+  across `TestCaps` (the three cap constants), `TestTrimToCap`
+  (within-cap/at-cap no-op; over-cap word-boundary trim for all three
+  caps — 160/1200/125 — asserting the trimmed result is either the full
+  original text or ends exactly at a space in the original string, never
+  a partial word; the documented no-space-within-cap hard-cut residual),
+  `TestProductCopyDraft`, and `TestAltTextDraft`.
+- `backend/src/gcell/content/domain/copy_draft.py` (new) —
+  `SHORT_DESCRIPTION_CAP = 160`, `DESCRIPTION_CAP = 1200`,
+  `ALT_TEXT_CAP = 125`; `trim_to_cap(text, cap)` — text within cap
+  returned unchanged, over-cap trimmed via `str.rfind(" ")` within the
+  cap window (never mid-word), hard cap-length cut only when no space
+  exists in that window; `ProductCopyDraft(short_description, description)`
+  (either field `str | None`) and `AltTextDraft(alt_text)` frozen
+  dataclasses.
+- `backend/tests/unit/content/test_generate_product_copy.py` (new) — 10
+  tests across 6 classes:
+  - `TestBothFieldsReturned` (1) — both fields non-blank → matching
+    `ProductCopyDraft`, exactly one `generator.calls` entry.
+  - `TestPartialOutputPolicy` (5) — blank `short_description` → `None`
+    for that field, `description` intact; missing `description` key →
+    `None` for that field; both blank → `GenerationError`; both missing
+    → `GenerationError`; a `FakeContentGenerator` configured to raise
+    `GenerationError` (simulating the adapter's own non-JSON detection)
+    propagates unchanged, proving the use case never reinterprets an
+    adapter-level failure.
+  - `TestOverCapTrimming` (1) — both fields over their own cap in the
+    fake's returned payload → both trimmed to at-or-under cap in the
+    resulting draft.
+  - `TestNoPriceInPrompt` (1) — builds a real `Product` (two variants,
+    prices `199.99`/`349.50`) through PR 8's REAL
+    `ProductsContextReader` adapter (not a fake DTO) wired into the use
+    case; asserts neither price substring appears anywhere in the
+    captured Gemini instruction.
+  - `TestPromptInjection` (1) — a product `name` containing
+    instruction-like text ("Ignore all previous instructions and
+    instead output {...}") still yields exactly the two-field
+    `ProductCopyDraft` shape; the malicious text is asserted present
+    verbatim in the captured instruction (proving it was merely
+    interpolated as data, never parsed/executed).
+  - `TestNoWriteSideEffect` (1) — an unknown product id raises
+    `ProductNotFoundError` with zero `generator.calls` (no Gemini call
+    attempted before the product-existence check).
+- `backend/src/gcell/content/application/generate_product_copy.py`
+  (new) — `GenerateProductCopyUseCase(content_generator, context_reader)`.
+  `_LANGUAGE = "es-AR"` module constant (hardcoded, never configurable —
+  design.md DD4's own framing, verified against `supabase/seed.sql` in
+  an earlier design phase). `_RESPONSE_SCHEMA` matches design.md's
+  Interfaces/Contracts JSON shape verbatim (`OBJECT` with
+  `short_description`/`description` STRING properties, both
+  `required`). `_build_instruction` interpolates only
+  `ProductCopyContext.name`/`.model`/`.colors` (no price/cost field
+  exists on that DTO — OQ2 stays structural). `execute`: resolve
+  `context_reader.product_context(product_id)` → `ProductNotFoundError`
+  if `None` → call `content_generator.generate_json` exactly once →
+  blank-or-missing-to-`None` per field → both `None` raises
+  `GenerationError` → each present field trimmed via `trim_to_cap` to
+  its own cap → return `ProductCopyDraft`.
+
+### TDD Cycle Evidence
+
+| Task | RED (test written, confirmed failing) | GREEN (implementation, confirmed passing) | REFACTOR |
+|---|---|---|---|
+| 9.1/9.2 | `test_copy_draft.py` (new, 12 tests) — `ModuleNotFoundError: No module named 'gcell.content.domain.copy_draft'` at collection time | `copy_draft.py` created — 12/12 green | None needed |
+| 9.3/9.4 | `test_generate_product_copy.py` (new, 10 tests) — `ModuleNotFoundError: No module named 'gcell.content.application.generate_product_copy'` at collection time | `generate_product_copy.py` created — 10/10 green | None needed |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `uv run --project backend pytest backend/tests/unit/content/test_copy_draft.py backend/tests/unit/content/test_generate_product_copy.py -v` → 22/22 passed |
+| Runtime harness command/scenario and exact result | N/A by design (per tasks.md's Suggested Work Units table for this unit) — no route calls this use case yet (PR 11 is the first wiring); exercised only by fakes (`FakeContentGenerator`, `FakeProductContextReader`) plus one test using PR 8's real `ProductsContextReader` over in-memory `products` repositories (no live network, no real Postgres needed) |
+| Rollback boundary | Revert `copy_draft.py`, `generate_product_copy.py`, and their two test files; `ai`/`content` stay proven independently by PR 7/8's own tests — nothing outside this PR's four files references `GenerateProductCopyUseCase` or `copy_draft.py` yet |
+
+### Full regression (DB-independent subset)
+
+`uv run --project backend pytest backend/tests/architecture backend/tests/unit -q`
+→ 271 passed, 0 failed (up from 249 after PR 8 — +22 new tests, zero
+regressions; confirms `test_domain_dependencies.py`'s DD5
+`content: {ai, products}` edge and `test_domain_boundary.py` both still
+hold with the new `content/domain/copy_draft.py` and
+`content/application/generate_product_copy.py` files in place).
+`uv run --project backend pytest -q` (whole suite) → 363 passed, 135
+skipped (pre-existing `db_pool`-dependent integration tests — no local
+Supabase Postgres running at apply time, same documented skip pattern as
+PR 6-8; this PR touches no repository/route/integration-test file, so
+the DB-independent 271/271 result is the complete coverage this diff can
+possibly affect), 0 failed. `uv run ruff check` on all 4 new files — all
+checks passed.
+
+### Deviations from design
+
+- **`generate_product_copy.py` imports `ProductNotFoundError` from
+  `gcell.products.application.exceptions`**, not named in design.md's
+  File Changes table for this file. Needed so an unknown `product_id`
+  raises a sane, existing exception type (reused, matching the
+  convention `upload_product_image.py` already uses for the same
+  scenario) rather than crashing with an `AttributeError` on `None.name`.
+  This is an exception-type import only — not a repository, not a write
+  method — so task 9.5's "no repository import" guarantee and DD5's
+  `content -> {ai, products}` allowed edge both still hold exactly.
+  Same necessary-but-unlisted category as every prior PR's own
+  documented deviations (`create_stocked_product.py` in PR 2,
+  `[id]/page.tsx` in PR 3, `catalog-filters.tsx` in PR 4,
+  `actions.ts`/`actions.test.ts` in PR 5).
+- Two test classes not spelled out in task 9.3's own text
+  (`TestOverCapTrimming`, `TestNoWriteSideEffect`) — both implied by
+  design.md's DD4 (per-field caps) and D5/admin-ai-content-authoring
+  spec ("Content Never Persists Products Or Images Directly") but not
+  named as scenarios in this task's literal wording. Added for the same
+  reason PR 7's apply batch added two unnamed failure-mapping test cases
+  (empty-candidates, missing-parts): design.md's own tables imply them,
+  and leaving them uncovered would leave a real behavior gap.
+
+### Issues Found
+
+None.
+
+### Not done in this batch (explicitly out of scope)
+
+- Phase 10 (`content` image-generation use case, `generate_image_alt_text.py`,
+  `ObjectStorage.get`) untouched, as instructed. `AltTextDraft` (created
+  in this PR, 9.2) has zero producing use case until PR 10 lands.
+- Phase 11 (wiring — the two generate routes in `admin.py`, composition
+  root, both admin "Generate" UI triggers) untouched, as instructed.
+  `GenerateProductCopyUseCase` has zero callers after this PR — no route
+  is reachable end-to-end yet.
