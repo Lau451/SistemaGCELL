@@ -528,3 +528,134 @@ failing before its paired GREEN change (see per-task Result notes in
   instructed. This PR only makes an already-set `alt_text` editable by
   hand; no Gemini reference, no generation trigger, exists anywhere in
   this diff.
+
+## PR 6 — `ai` Domain Scaffold (Phase 6, tasks 6.1-6.11)
+
+Status: Complete. No live Gemini call — this PR ships zero `httpx` code
+(that's PR 7). Base = PR 1 or later; no dependency on PR 2-5 (independently
+verified by starting from a tree with only PR 1-5 already applied). Pure
+scaffolding: a domain-agnostic `ContentGenerator` port + pure `ImagePart`
+domain type, `GEMINI_API_KEY`/`GEMINI_MODEL` config, a `require_gemini`
+503 guard mirroring `require_storage` byte-for-byte, DD5's new
+cross-domain-directionality architecture test, a frontend-boundary
+regression guard, and the repo's first `.env.example`.
+
+Strict TDD followed throughout: every GREEN task's RED test was written
+and confirmed failing first, except 6.7 and 6.9 — both are, by design.md's
+own framing, tests that are expected to be immediately green against
+today's tree (a directionality/boundary regression guard with nothing yet
+violating it), so their "RED" step is "test written, confirmed to need
+zero production changes" rather than a failing-then-passing cycle. See
+per-task Result notes in `tasks.md` for the exact evidence at each step.
+
+### Files changed
+
+- `backend/tests/architecture/test_domain_boundary.py` — extended with
+  `test_ai_domain_generation_module_has_no_banned_imports`, a dedicated
+  assertion tying the `gemini-generation` spec's "Domain boundary test
+  passes for ai" scenario directly to `ai/domain/generation.py`'s
+  existence and purity (rather than relying only on the file's existing
+  generic 6-domain sweep, which trivially passes on an absent file).
+- `backend/src/gcell/ai/domain/generation.py` (new) — `ImagePart(data:
+  bytes, mime_type: str)` frozen dataclass; `SUPPORTED_IMAGE_MIMES =
+  frozenset({"image/jpeg", "image/png", "image/webp"})`, mirroring
+  `products/domain/product_image.py`'s `ALLOWED_UPLOAD_MIMES`. Zero
+  banned imports (stdlib `dataclasses` only).
+- `backend/src/gcell/ai/application/content_generator.py` (new) —
+  `ContentGenerator` Protocol (`generate_json(*, instruction,
+  response_schema, image=None, max_output_tokens=1024) -> Mapping[str,
+  Any]`), `GenerationError`, `GenerationRefusedError(GenerationError)`.
+  Signature and docstrings match design.md's Interfaces/Contracts section
+  verbatim.
+- `backend/tests/unit/shared/test_dependencies.py` — extended with 3 new
+  `require_gemini` tests (unset key → 503 `gemini_unavailable`; set key →
+  `GeminiCredentials` with the default model; `GEMINI_MODEL` env override
+  respected), mirroring `test_require_storage.py`'s existing shape.
+- `backend/src/gcell/shared/infrastructure/config.py` — `_DEFAULT_GEMINI_MODEL
+  = "gemini-2.5-flash"` module constant + `gemini_api_key()`/
+  `gemini_model()` (the latter reads `GEMINI_MODEL`, defaulting to the
+  constant — DD4's model-pinning policy).
+- `backend/src/gcell/shared/infrastructure/dependencies.py` —
+  `GeminiCredentials(api_key: str, model: str)` frozen dataclass +
+  `require_gemini()`, byte-for-byte `require_storage`/`StorageCredentials`
+  shape (503 `gemini_unavailable` when `GEMINI_API_KEY` is unset).
+- `backend/tests/architecture/test_domain_dependencies.py` (new, DD5) —
+  `ALLOWED_EDGES` map exactly as design.md specifies; `ast`-based
+  cross-domain-import walk over all three layers (`domain/`,
+  `application/`, `infrastructure/`) of all six domains; `gcell.api`
+  exempt as the composition root. A separate module from
+  `test_domain_boundary.py` (that one checks `domain/`-layer purity only;
+  this one checks cross-domain import *direction*).
+- `backend/tests/architecture/test_frontend_service_role_boundary.py` —
+  `test_frontend_src_never_references_service_role_key` renamed to
+  `test_frontend_src_never_references_banned_secret_token` and
+  parametrized (`@pytest.mark.parametrize("banned_token", ["SERVICE_ROLE",
+  "GEMINI"])`); doc comment extended to explain the `GEMINI` addition
+  covers content-ai-domains' DD4/Threat-Matrix "Secret exposure" row.
+- `.env.example` (new, repo root) — first one in the repo. Documents every
+  existing `config.py` env var name (`DB_URL`, `SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_ISSUER`,
+  `SUPABASE_JWT_AUDIENCE`) plus `GEMINI_API_KEY`/`GEMINI_MODEL` — names
+  only, no values. Un-ignored by the root `.gitignore`'s
+  `!.env.example` exception.
+
+### TDD Cycle Evidence
+
+| Task | RED (confirmed failing / confirmed pre-green) | GREEN (confirmed passing) |
+|---|---|---|
+| 6.1/6.2 | `test_ai_domain_generation_module_has_no_banned_imports`: `AssertionError: missing ai domain module: .../ai/domain/generation.py` before the file existed | `generation.py` created — `test_domain_boundary.py` 2/2 green |
+| 6.3 | No dedicated RED task assigned to 6.3 in `tasks.md` (GREEN-only); the port and its two exception types have no runtime behavior to fail against yet — verified by successful import only | `content_generator.py` created, imports cleanly, `ai/domain`'s purity test (6.1) stays green since `content_generator.py` lives in `application/`, not `domain/` |
+| 6.4/6.5-6.6 | 3 new `test_dependencies.py` tests: `ImportError: cannot import name 'require_gemini' from 'gcell.shared.infrastructure.dependencies'` before either function existed | `config.py`/`dependencies.py` updated — `test_dependencies.py` 5/5 green (2 pre-existing `require_db_pool` + 3 new `require_gemini`); full `backend/tests/unit/shared/` 48/48 green |
+| 6.7/6.8 | `test_cross_domain_imports_match_allowed_edges` — written and run immediately: 1/1 green against today's tree with zero production changes (design.md verified this before the test was written; no cross-domain edge in the current tree violates `ALLOWED_EDGES`) | No GREEN step needed — 6.8 is the confirmation itself |
+| 6.9/6.10 | `test_frontend_src_never_references_banned_secret_token[GEMINI]` — written and run immediately: 2/2 green (`[SERVICE_ROLE]` + `[GEMINI]`) with zero `frontend/` changes (no `GEMINI` token exists under `frontend/src/` yet) | No GREEN step needed — 6.10 is the confirmation itself |
+| 6.11 | N/A — a new documentation-only file, no test targets it directly | `.env.example` created; confirmed present via `git status --porcelain` (`?? .env.example`), confirmed un-ignored by the root `.gitignore`'s explicit `!.env.example` exception |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `uv run --project backend pytest backend/tests/architecture/test_domain_dependencies.py backend/tests/architecture/test_frontend_service_role_boundary.py backend/tests/architecture/test_domain_boundary.py backend/tests/unit/shared/test_dependencies.py -v` → 10/10 passed |
+| Runtime harness command/scenario and exact result | N/A — no adapter yet, no route reachable; per tasks.md's Suggested Work Units table: "guard proven via unit test only (design.md verified `test_domain_dependencies.py` green against today's tree before writing it)" |
+| Full backend regression (unit + architecture, no DB dependency) | `uv run --project backend pytest backend/tests/unit backend/tests/architecture -q` → 227 passed, 0 failed (up from 218 unit + architecture tests before this PR — see PR 2's evidence table for the pre-existing baseline shape) |
+| Lint | `uv run ruff check` on all 8 changed/new backend files — all checks passed (1 line-length violation in `test_domain_boundary.py` found and fixed during this batch) |
+| Rollback boundary | Revert `generation.py`, `content_generator.py`, `config.py`/`dependencies.py`'s diffs, `test_domain_dependencies.py`, `test_domain_boundary.py`/`test_frontend_service_role_boundary.py`/`test_dependencies.py`'s diffs, and `.env.example`; nothing else references any of these yet (PR 7 is the first consumer of `content_generator.py`/`generation.py`; PR 11 is the first consumer of `require_gemini`) |
+
+### Full backend regression note (DB-dependent suites)
+
+`uv run --project backend pytest -q` (the whole suite, including
+`integration/db` and `integration/api`) was **not** run to green in this
+apply session — this environment had no `DB_URL`/local Supabase Postgres
+running at the time, so every DB-backed integration test errored/failed
+for that pre-existing environmental reason, independent of this PR's
+diff (matches the pattern already documented in PR 1-5's own apply
+sessions, which explicitly required `DB_URL` set against a local
+Supabase instance). The **DB-independent** subset — `backend/tests/unit`
++ `backend/tests/architecture`, which is everything this PR's diff can
+possibly affect, since PR 6 touches no repository/route/integration-test
+file — is the 227/227 green result above. Independent re-verification
+with a running local Supabase Postgres is the orchestrator's job per
+this batch's explicit instructions.
+
+### Deviations from design
+
+None — implementation matches design.md's DD4/DD5 and the
+`gemini-generation` spec delta exactly. `ai/domain/generation.py` and
+`ai/application/content_generator.py` match the Interfaces/Contracts
+section's shapes verbatim; `ALLOWED_EDGES` in
+`test_domain_dependencies.py` is a literal copy of design.md's own map.
+
+### Issues Found
+
+None.
+
+### Not done in this batch (explicitly out of scope)
+
+- Phase 7 (`ai/infrastructure/gemini_content_generator.py`, the `httpx`
+  adapter, `test_gemini_content_generator.py`) untouched, as instructed.
+  `content_generator.py`'s `ContentGenerator` Protocol has zero
+  implementations yet — `ai` is a fully typed, fully tested, but
+  completely inert leaf domain after this PR, exactly as design.md's
+  Rollout section describes ("Slice 3 (`ai`) is wired to nothing and is
+  inert until slice 4").
+- Phase 8+ (`content` domain, generate routes, admin UI "Generate"
+  triggers) untouched, as instructed.

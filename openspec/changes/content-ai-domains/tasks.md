@@ -394,40 +394,88 @@ UI triggers together.
 
 ## Phase 6: `ai` Domain Scaffold (PR 6) — no live Gemini call
 
-- [ ] 6.1 RED `backend/tests/architecture/test_domain_boundary.py`-style new
+- [x] 6.1 RED `backend/tests/architecture/test_domain_boundary.py`-style new
       assertion (or extend it) — `ai/domain/generation.py` imports nothing
       banned (spec `gemini-generation`: "Domain boundary test passes for
       ai").
-- [ ] 6.2 GREEN `backend/src/gcell/ai/domain/generation.py` — pure:
+      Result: added `test_ai_domain_generation_module_has_no_banned_imports`
+      to the existing file (reuses its `_banned_imports_in_file` helper);
+      confirmed RED (`AssertionError: missing ai domain module`) before 6.2.
+- [x] 6.2 GREEN `backend/src/gcell/ai/domain/generation.py` — pure:
       `ImagePart`, `SUPPORTED_IMAGE_MIMES`. Zero banned imports.
-- [ ] 6.3 GREEN `backend/src/gcell/ai/application/content_generator.py` —
+      Result: `ImagePart(data: bytes, mime_type: str)` frozen dataclass +
+      `SUPPORTED_IMAGE_MIMES = frozenset({"image/jpeg", "image/png",
+      "image/webp"})`, mirroring `product_image.py`'s
+      `ALLOWED_UPLOAD_MIMES`. 6.1's test green.
+- [x] 6.3 GREEN `backend/src/gcell/ai/application/content_generator.py` —
       `ContentGenerator` Protocol (`generate_json`), `GenerationError`,
       `GenerationRefusedError`.
-- [ ] 6.4 RED `backend/tests/unit/shared/test_dependencies.py` (extend) —
+      Result: done, signature matches design.md's Interfaces/Contracts
+      section verbatim (`instruction`, `response_schema`, `image`,
+      `max_output_tokens`).
+- [x] 6.4 RED `backend/tests/unit/shared/test_dependencies.py` (extend) —
       `require_gemini()` raises the 503-mapped error when
       `GEMINI_API_KEY` is unset; a configured key passes through (spec
       "Generate endpoint returns 503 without a key").
-- [ ] 6.5 GREEN `backend/src/gcell/shared/infrastructure/config.py` —
+      Result: 3 new tests (unset → 503 `gemini_unavailable`; set → returns
+      `GeminiCredentials` with the default model; `GEMINI_MODEL` env
+      override respected). Confirmed RED
+      (`ImportError: cannot import name 'require_gemini'`) before 6.5-6.6.
+- [x] 6.5 GREEN `backend/src/gcell/shared/infrastructure/config.py` —
       `gemini_api_key()`, `gemini_model()` (module constant
       `"gemini-2.5-flash"`, optional `GEMINI_MODEL` env override, DD4).
-- [ ] 6.6 GREEN `backend/src/gcell/shared/infrastructure/dependencies.py` —
+      Result: `_DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"` module constant
+      + both functions, mirroring `supabase_service_role_key()`'s
+      docstring style.
+- [x] 6.6 GREEN `backend/src/gcell/shared/infrastructure/dependencies.py` —
       `GeminiCredentials` + `require_gemini()` → `503 gemini_unavailable`.
-- [ ] 6.7 RED `backend/tests/architecture/test_domain_dependencies.py` (new,
+      Result: done, byte-for-byte `require_storage`/`StorageCredentials`
+      shape. 6.4's 3 RED tests + all 5 pre-existing `test_dependencies.py`
+      tests green (8/8); full `backend/tests/unit/shared/` suite 48/48
+      green (no regression).
+- [x] 6.7 RED `backend/tests/architecture/test_domain_dependencies.py` (new,
       DD5) — write the full `ALLOWED_EDGES` map (`products: set()`,
       `stock: {products}`, `content: {ai, products}`, `ai: set()`,
       `recommendation: set()`, `shared: set()`); run against today's tree
       first to confirm it is green with zero `content`/`ai` cross-imports
       yet (design.md verified this before writing the test).
-- [ ] 6.8 GREEN — no production code change needed for 6.7 to pass; commit
+      Result: new file, `ast`-based cross-domain-import walk (same
+      technique as `test_domain_boundary.py`) over all three layers of
+      all six domains; `gcell.api` exempt as the composition root. Ran
+      immediately green against today's tree — no RED state exists for
+      this test by construction (design.md verified this before writing
+      it); the RED/GREEN pair here is "test written" (6.7) / "zero prod
+      changes needed to pass" (6.8), same shape as 6.9/6.10.
+- [x] 6.8 GREEN — no production code change needed for 6.7 to pass; commit
       the test as the executable form of D9's directionality rule.
-- [ ] 6.9 RED extend `backend/tests/architecture/test_frontend_service_role_boundary.py`
+      Result: confirmed — `test_cross_domain_imports_match_allowed_edges`
+      passes with zero `backend/src/gcell/**` changes beyond 6.2/6.3/6.5/6.6
+      (all of which stay within `ALLOWED_EDGES`: `ai` imports nothing,
+      `shared`'s `dependencies.py`/`config.py` import nothing cross-domain).
+- [x] 6.9 RED extend `backend/tests/architecture/test_frontend_service_role_boundary.py`
       — parametrize the guard over `("SERVICE_ROLE", "GEMINI")` (spec
       "Frontend has zero Gemini references").
-- [ ] 6.10 GREEN — confirm 6.9 passes with zero code changes (no Gemini
+      Result: `test_frontend_src_never_references_service_role_key`
+      renamed to `test_frontend_src_never_references_banned_secret_token`,
+      `@pytest.mark.parametrize("banned_token", ["SERVICE_ROLE", "GEMINI"])`.
+      Same shape as 6.7: both parametrized cases pass immediately (no
+      `GEMINI` token exists under `frontend/src/` yet) — no RED state by
+      construction, per design.md's own framing of this task.
+- [x] 6.10 GREEN — confirm 6.9 passes with zero code changes (no Gemini
       token exists under `frontend/` yet); this is a regression guard for
       Phase 3/5/11's frontend diffs.
-- [ ] 6.11 GREEN `.env.example` (new) — `GEMINI_API_KEY=` name only, no
+      Result: confirmed — both `[SERVICE_ROLE]` and `[GEMINI]` parametrized
+      cases green, zero `frontend/` diff in this PR.
+- [x] 6.11 GREEN `.env.example` (new) — `GEMINI_API_KEY=` name only, no
       value; matches `config.py`'s existing reference.
+      Result: created at the repo root (first one in the repo, per
+      design.md's File Changes table); documents every existing
+      `config.py` env var name (`DB_URL`, `SUPABASE_URL`,
+      `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWKS_URL`,
+      `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`) plus
+      `GEMINI_API_KEY`/`GEMINI_MODEL` — names only, no values. Confirmed
+      un-ignored by the root `.gitignore`'s `!.env.example` exception
+      (`git status --porcelain` shows it as a new untracked file).
 
 ## Phase 7: `ai` Domain Adapter (PR 7, base = PR 6)
 
