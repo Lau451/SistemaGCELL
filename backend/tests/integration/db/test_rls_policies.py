@@ -578,14 +578,15 @@ async def test_owner_delete_denied_by_append_only_trigger_on_stock_movements(
 # --- service_role-only write -------------------------------------------------
 
 
-async def test_anon_reads_only_product_photos_bucket_objects(
-    db_conn: asyncpg.Connection,
+@pytest.mark.parametrize("role", RESTRICTED_ROLES)
+async def test_restricted_role_reads_only_product_photos_bucket_objects(
+    db_conn: asyncpg.Connection, role: str
 ) -> None:
     _, product_photos_name, other_bucket_name = await _seed_two_bucket_storage_objects(
         db_conn
     )
 
-    async with as_role(db_conn, "anon") as conn:
+    async with as_role(db_conn, role) as conn:
         rows = await conn.fetch(
             "SELECT name FROM storage.objects WHERE name = ANY($1)",
             [product_photos_name, other_bucket_name],
