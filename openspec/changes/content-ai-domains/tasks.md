@@ -739,7 +739,7 @@ UI triggers together.
 
 ## Phase 11: Wiring — Routes + Admin UI Triggers (PR 11, base = PR 10 + PR 3 + PR 5)
 
-- [ ] 11.1 RED `backend/tests/integration/api/test_admin_content.py` (new) —
+- [x] 11.1 RED `backend/tests/integration/api/test_admin_content.py` (new) —
       unauthenticated request to each new generate route → `401` **before**
       any `503` (Threat-Matrix "Routing" row); `GEMINI_API_KEY` unset →
       `503` on both generate routes, **no Gemini call attempted** (spec
@@ -750,7 +750,22 @@ UI triggers together.
       body shape as an unknown id (Threat-Matrix IDOR row, mirrors 5.1/5.5);
       no route accepts more than one `product_id`/`image_id` per request
       (spec "No bulk generate route exists").
-- [ ] 11.2 GREEN `backend/src/gcell/api/admin.py` — `POST
+      Result: new file, 12 tests — 401-before-503 (parametrized over both
+      routes), no-pool 503 (parametrized), no-Gemini-key 503 with Storage
+      configured so the 503 is attributable to `require_gemini` alone
+      (parametrized), alt-text-only no-storage 503, generate-copy 200 with
+      before/after zero-write-call assertion, cross-parent-vs-unknown-id
+      same-body 404 (also proves zero Storage/Gemini calls), and a
+      structural OpenAPI-schema check for "no bulk route" (no request
+      body, no array-typed path param). Confirmed RED (10/10 failing —
+      404 route-not-found or `KeyError` on the OpenAPI schema check)
+      before 11.2. Also added 2 tests beyond this task's own text (implied
+      by 11.2's `GenerationError`/`GenerationRefusedError` mapping and the
+      gemini-generation spec's "Gemini call failure surfaces as an error"
+      scenario): `GenerationError` → `502 generation_failed`,
+      `GenerationRefusedError` → `502 generation_refused`, distinct
+      `detail` values, parametrized.
+- [x] 11.2 GREEN `backend/src/gcell/api/admin.py` — `POST
       /admin/products/{id}/copy/generate` and `POST
       /admin/products/{id}/images/{image_id}/alt-text/generate`; guard order
       401 → `require_db_pool` 503 → (alt-text only) `require_storage` 503 →
@@ -758,34 +773,124 @@ UI triggers together.
       `GenerationRefusedError` → `502 generation_refused` in
       `_execute_or_raise`; wire the DD2 adapter (Phase 8) and the Gemini
       adapter (Phase 7) at the composition root.
-- [ ] 11.3 RED `frontend/src/app/(admin)/admin/products/product-form.test.tsx`
+      Result: new "Content generation" section — `AdminGenerateCopyResponse`
+      (`short_description`/`description`, both nullable per DD6) and
+      `AdminGenerateAltTextResponse` (`alt_text`, never null — DD6's
+      no-partial-output-leniency rule), each with a `from_draft` classmethod
+      mirroring `AdminProductResponse.from_domain`'s pattern; two new
+      `_build_context_reader`/`_build_content_generator` composition
+      helpers (per-request `ProductsContextReader` over the route's own
+      `PostgresProductRepository`/`PostgresProductImageRepository`, and a
+      fresh `GeminiContentGenerator` from `require_gemini`'s
+      `GeminiCredentials` — never cached on `app.state`, same "read fresh
+      per request" rule `StorageCredentials` already documents). Two new
+      `except` clauses added to `_execute_or_raise`, `GenerationRefusedError`
+      caught BEFORE the plain `GenerationError` clause (subclass ordering).
+      12/12 11.1 tests green.
+- [x] 11.3 RED `frontend/src/app/(admin)/admin/products/product-form.test.tsx`
       (extend) — "Generate copy" button calls the new endpoint and prefills
       both fields **without** submitting the form (D5: no write on this
       path).
-- [ ] 11.4 GREEN `frontend/src/app/(admin)/admin/products/product-form.tsx`,
+      Result: 4 new tests (no button on the CREATE form since there is no
+      `productId` yet, the button calls `generateProductCopyAction(productId)`
+      and prefills both fields without calling the submit `action`, a
+      generate failure surfaces via `role=alert` without touching the
+      fields — plus the "no button on create" case as a construction-only
+      guard). Confirmed RED (2 failing — button not found) before 11.4.
+- [x] 11.4 GREEN `frontend/src/app/(admin)/admin/products/product-form.tsx`,
       `actions.ts` — add the "Generate copy" trigger calling
       `POST .../copy/generate`; prefill only, existing Save button (Phase
       3) remains the only write path.
-- [ ] 11.5 RED `frontend/src/app/(admin)/admin/products/image-manager.test.tsx`
+      Result: `actions.ts` gains `generateProductCopyAction(productId)` —
+      no request body (route acts on the URL's `product_id` alone), same
+      `adminBackendFetch` relay pattern as every other action.
+      `product-form.tsx` gains `descriptionRef`/`shortDescriptionRef` (the
+      textarea/input were already uncontrolled `defaultValue` fields —
+      only a `ref` was added, no behavior change to existing typing/submit)
+      and a "Generate copy" `type="button"` (never `type="submit"`),
+      rendered only when `productId !== undefined`. On success, each
+      non-null field's `ref.current.value` is set directly — DD6's
+      partial-output policy: a `null` field leaves that input's current
+      value untouched rather than clearing it. 17/17
+      `product-form.test.tsx` green (15 pre-existing + 2 net-new passing,
+      2 of the 4 new tests were already-passing constructions).
+- [x] 11.5 RED `frontend/src/app/(admin)/admin/products/image-manager.test.tsx`
       (extend) — "Generate alt text" button calls the new endpoint and
       prefills the alt-text input without submitting.
-- [ ] 11.6 GREEN `frontend/src/app/(admin)/admin/products/image-manager.tsx`
+      Result: 2 new tests (button calls
+      `generateImageAltTextAction(productId, imageId)` and prefills that
+      image's alt-text input without calling `updateProductImageAltTextAction`
+      or `router.refresh()`; a generate failure surfaces via `role=alert`
+      without refreshing). Confirmed RED (2 failing — button not found)
+      before 11.6.
+- [x] 11.6 GREEN `frontend/src/app/(admin)/admin/products/image-manager.tsx`
       — add the "Generate alt text" trigger; existing PATCH save (Phase 5)
       remains the only write path.
-- [ ] 11.7 Verify upload does not auto-trigger generation (spec "Upload
+      Result: `actions.ts` gains `generateImageAltTextAction(productId,
+      imageId)` (same no-body relay pattern). `image-manager.tsx` gains
+      `handleGenerateAltText`, reusing the existing `altTextRefs`/
+      `altTextErrors` state (same per-image ref-mutation approach
+      `handleSaveAltText` already uses) and a "Generate alt text"
+      `type="button"` next to "Save alt text". Deliberately NO
+      `router.refresh()` on success (documented in the file's module
+      docstring) — the route has zero write side effect (D5), so a
+      refresh would re-fetch `initialImages` unchanged and silently wipe
+      the just-generated draft back to its pre-generate value via the
+      input's `defaultValue`. 13/13 `image-manager.test.tsx` green.
+- [x] 11.7 Verify upload does not auto-trigger generation (spec "Upload
       does not auto-trigger alt-text generation" — construction-only check,
       no new code path connects upload to generate).
-- [ ] 11.8 Re-run 6.9/6.10's parametrized `test_frontend_service_role_boundary.py`
+      Result: confirmed by construction — grepped `image-manager.tsx` for
+      `generateImageAltTextAction`: the only call site is inside
+      `handleGenerateAltText`, wired exclusively to the new "Generate alt
+      text" button's `onClick`. The upload form's `action={uploadAction}`
+      and its post-success `useEffect` (`formRef.current?.reset()` +
+      `router.refresh()`) never reference it — no code path connects
+      upload completion to alt-text generation.
+- [x] 11.8 Re-run 6.9/6.10's parametrized `test_frontend_service_role_boundary.py`
       guard — confirm the new frontend diff still contains zero `GEMINI`
       tokens.
-- [ ] 11.9 Full regression: `npm --prefix frontend test && uv run --project
+      Result: confirmed — both `[SERVICE_ROLE]` and `[GEMINI]` parametrized
+      cases still green (2/2) against this PR's full frontend diff. Button
+      labels say "Generate copy"/"Generate alt text" — describe the
+      action, never expose the word "Gemini" or any config detail.
+- [x] 11.9 Full regression: `npm --prefix frontend test && uv run --project
       backend pytest -q`; with `GEMINI_API_KEY` unset, confirm `/health`,
       the full public catalog, and the full existing admin panel are
       unaffected and only the two generate endpoints return `503` (spec
       "Rest of the app is unaffected by a missing key").
+      Result: `npm --prefix frontend test` → 47 files / 366 tests green
+      (up from 361 — 5 net-new: 3 in `product-form.test.tsx`, 2 in
+      `image-manager.test.tsx`). `npx eslint`/`npx tsc --noEmit` on every
+      changed frontend file: 0 errors (1 pre-existing, already-documented
+      `<img>`/`next/image` warning only). Backend: the monolithic `uv run
+      pytest -q` reproduced the SAME pre-existing `db_pool`-fixture
+      connection-pool-contention instability PR 10's apply-progress.md
+      already documented and root-caused via `git stash -u` (149
+      failed/135 errors, all `integration/db`-fixture-teardown-shaped) —
+      NOT a regression from this PR's diff; verified via the same split
+      invocation PR 10 used instead: `pytest backend/tests/unit
+      backend/tests/architecture` → 282 passed; `pytest
+      backend/tests/integration/db` → 133 passed; `pytest
+      backend/tests/integration/api` → 106 passed. Total 521/521 backend +
+      366/366 frontend, 0 failed anywhere. `GEMINI_API_KEY` was unset for
+      the entire split run except where an individual test explicitly
+      `monkeypatch.setenv`'d it — `/health` (1 test, separately isolated
+      via `pytest -k health` → 1 passed), the full public catalog suite,
+      and the full pre-existing admin panel suite (`test_admin.py`,
+      `test_admin_images.py`, all Phase 1-10 tests) all passed unaffected;
+      only the two new generate routes 503 (proven by 11.1's parametrized
+      no-key tests).
 - [ ] 11.10 Optional manual verification against a real `GEMINI_API_KEY`
       (proposal's Dependencies) — not required for merge; the 503 path is
       already proven by 11.1/11.9.
+      Note: explicitly left undone by design, per this batch's own scope
+      instruction — no real `GEMINI_API_KEY` is available in this
+      (headless, apply-phase) environment, this task was explicitly called
+      out as optional and not required for merge, and 11.1/11.9 already
+      prove the entire testable surface (503-without-a-key on both
+      routes, 200-with-a-mocked-transport on generate-copy, the
+      502/404/401 mapping table). Not part of PR 11's merge criteria.
 
 ## Phase 12: Final Success-Criteria Sweep
 
