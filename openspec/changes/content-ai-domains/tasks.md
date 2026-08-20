@@ -227,24 +227,72 @@ UI triggers together.
 
 ## Phase 4: Public Catalog Blurb Render (PR 4, base = PR 2)
 
-- [ ] 4.1 RED `frontend/src/lib/catalog/derive.test.ts` (or nearest
+- [x] 4.1 RED `frontend/src/lib/catalog/derive.test.ts` (or nearest
       existing derive test) — `CatalogListingCard.shortDescription` derives
       from the row's `short_description`.
-- [ ] 4.2 GREEN `frontend/src/lib/catalog/derive.ts` — add
+      Result: fixed the pre-existing `short_description`-missing mock
+      (`product: CatalogProductRow`), extended the "composes..." test's
+      `toEqual` with `shortDescription: null`, and added two new tests
+      (`derives shortDescription from the row's short_description`,
+      `derives a null shortDescription when the row's short_description is
+      null`). Confirmed RED by stashing the paired `derive.ts` GREEN edit
+      and re-running: 3 failures (`undefined` vs expected value/`null`)
+      before restoring it.
+- [x] 4.2 GREEN `frontend/src/lib/catalog/derive.ts` — add
       `shortDescription` to the derived card shape.
-- [ ] 4.3 GREEN `frontend/src/app/api/catalog/route.ts` — add
+      Result: `CatalogListingCard.shortDescription: string | null` added;
+      `deriveListingCard` populates it from `product.short_description`.
+      10/10 `derive.test.ts` green.
+- [x] 4.3 GREEN `frontend/src/app/api/catalog/route.ts` — add
       `shortDescription` to `CatalogListItem`.
-- [ ] 4.4 RED `frontend/src/app/(public)/__tests__/catalog-listing-content.test.tsx`
+      Result: field added, populated from `card.shortDescription` in the
+      `items` map. 12/12 `route.test.ts` green.
+- [x] 4.4 RED `frontend/src/app/(public)/__tests__/catalog-listing-content.test.tsx`
       (or `product-card.test.tsx`) — blurb renders when present (spec
       scenario "Listing renders the blurb when present"); renders cleanly,
       no broken placeholder, when null (spec scenario "Listing renders
       cleanly when the blurb is absent").
-- [ ] 4.5 GREEN `frontend/src/app/(public)/catalog-listing-content.tsx`,
+      Result: no `catalog-listing-content.test.tsx` exists and none was
+      created — `catalog-listing-content.tsx` is an async Server Component,
+      and this repo's established convention (`revalidate.test.ts`'s own
+      doc comment) is that Server Components are not rendered under jsdom;
+      only route-segment exports are asserted that way. Rendering
+      assertions instead extended the repo's actual rendering-level test,
+      `components/catalog/product-card.test.tsx`, with
+      `renders the shortDescription blurb when present` and
+      `renders cleanly with no blurb placeholder when shortDescription is
+      null`; confirmed RED (`TestingLibraryElementError` — blurb text not
+      found, since `ProductCard` didn't accept the prop yet) before 4.5.
+- [x] 4.5 GREEN `frontend/src/app/(public)/catalog-listing-content.tsx`,
       `components/catalog/product-card.tsx` — render the blurb with
       `line-clamp-2` (DD4: never assumes the 160-char cap server-side).
-- [ ] 4.6 Confirm `CATALOG_PRODUCT_COLUMNS`, `CatalogProductRow`, and the
+      Result: `ProductCardProps.shortDescription?: string | null` added;
+      renders a `<p data-testid="product-card-blurb"
+      className="text-muted-foreground line-clamp-2 text-xs">` only when
+      truthy, nothing (no empty placeholder) when null/absent.
+      `catalog-listing-content.tsx`'s card-mapping passes
+      `card.shortDescription` through. Deviation (same
+      necessary-but-unlisted category as PR2/PR3): also updated
+      `components/catalog/catalog-filters.tsx` (`CatalogApiItem` +
+      `toProductCardProps`) — not in design.md's File Changes table for
+      this phase, but it is the client-side `/api/catalog` consumer that
+      re-renders cards on every search/filter/pagination action; without
+      it the blurb would only ever appear on the first server-rendered
+      paint and silently disappear on any filter change. 7/7
+      `product-card.test.tsx` green; full frontend suite 47 files/354
+      tests green; `npx eslint` clean on every changed file.
+- [x] 4.6 Confirm `CATALOG_PRODUCT_COLUMNS`, `CatalogProductRow`, and the
       view (Phase 1) still agree column-for-column; re-run the
       `select("*")` grep guard.
+      Result: confirmed unchanged and still aligned —
+      `CATALOG_PRODUCT_COLUMNS` = `"id,slug,name,description,created_at,
+      short_description"`, `CatalogProductRow` has the same six keys in
+      the same order, and the Phase-1 migration's `catalog_products` view
+      selects the same six columns in the same order. `columns.test.ts` +
+      `queries.test.ts` (incl. the `select("*")` source-grep guard) both
+      re-run: 21/21 green. `npx tsc --noEmit` in `frontend/`: zero errors
+      (the pre-existing `derive.test.ts` type error from PR1's
+      `short_description` addition is now fixed by 4.1).
 
 ## Phase 5: Alt-Text Update Path (PR 5, base = PR 1) — zero Gemini dependency
 
