@@ -102,3 +102,23 @@ Every route this capability introduces (`/`, `/catalog`, `/catalog/*`, `/product
 - GIVEN the final set of implemented page routes
 - WHEN each route's path is tested against `CATALOG_PAGE_PATTERN` in `runtime-caching.ts`
 - THEN every route MUST match, and `runtime-caching.ts` MUST be byte-identical to its pre-change state
+
+### Requirement: Catalog Listing Renders The Short Description Blurb
+
+When a product's `short_description` is set, the catalog listing MUST
+render it alongside image, name, and price. When `short_description` is
+null, the listing MUST render without it and MUST NOT show a
+broken/empty placeholder.
+
+#### Scenario: Listing renders the blurb when present
+
+- GIVEN a product with a non-null `short_description`
+- WHEN it renders on the catalog listing
+- THEN its `short_description` text MUST be visible on the listing card
+
+#### Scenario: Listing renders cleanly when the blurb is absent
+
+- GIVEN a product with a null `short_description`
+- WHEN it renders on the catalog listing
+- THEN the card MUST render without error and without an empty/broken
+  placeholder for the blurb
