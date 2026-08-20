@@ -10,7 +10,22 @@ same rule for the DB transaction seam ("`shared/` must never import from
 `products/application/` ports (`image_repository.py`).
 """
 
+from dataclasses import dataclass
 from typing import Protocol
+
+
+@dataclass(frozen=True)
+class StoredObject:
+    """Bytes read back from `ObjectStorage.get` (design.md DD1).
+
+    `content_type` comes from the adapter's response header, not a
+    caller-supplied guess -- symmetric with `NormalizedImage` in
+    `shared/application/image_normalizer.py`. Gemini's `inline_data`
+    needs the exact mime type, not an assumed one.
+    """
+
+    data: bytes
+    content_type: str
 
 
 class ObjectStorage(Protocol):
@@ -19,6 +34,15 @@ class ObjectStorage(Protocol):
     """
 
     async def put(self, path: str, data: bytes, content_type: str) -> None: ...
+
+    async def get(self, path: str) -> StoredObject:
+        """Read an object's bytes (design.md DD1).
+
+        NOT idempotent-on-404 like `delete` -- a missing object raises
+        `ObjectStorageError` (maps to `502`), because a caller asking for
+        bytes cannot proceed without them.
+        """
+        ...
 
     async def delete(self, path: str) -> None:
         """MUST be IDEMPOTENT -- a missing object is success, never an

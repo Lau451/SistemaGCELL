@@ -14,7 +14,11 @@ exercised in a later PR's integration tests.
 
 import httpx
 
-from gcell.shared.application.object_storage import ObjectStorage, ObjectStorageError
+from gcell.shared.application.object_storage import (
+    ObjectStorage,
+    ObjectStorageError,
+    StoredObject,
+)
 
 
 class SupabaseStorage(ObjectStorage):
@@ -52,6 +56,19 @@ class SupabaseStorage(ObjectStorage):
             raise ObjectStorageError(
                 f"Storage put failed for '{path}': {response.status_code} {response.text}"
             )
+
+    async def get(self, path: str) -> StoredObject:
+        response = await self._client.get(f"/object/{self._bucket}/{path}")
+        if response.status_code >= 400:
+            # NOT idempotent-on-404 like `delete` -- see `ObjectStorage.get`'s
+            # docstring and design.md Decision 1.
+            raise ObjectStorageError(
+                f"Storage get failed for '{path}': {response.status_code} {response.text}"
+            )
+        return StoredObject(
+            data=response.content,
+            content_type=response.headers["content-type"],
+        )
 
     async def delete(self, path: str) -> None:
         response = await self._client.delete(f"/object/{self._bucket}/{path}")

@@ -9,7 +9,7 @@ later in PR5's integration tests and the final manual E2E).
 import httpx
 import pytest
 
-from gcell.shared.application.object_storage import ObjectStorageError
+from gcell.shared.application.object_storage import ObjectStorageError, StoredObject
 from gcell.shared.infrastructure.supabase_storage import SupabaseStorage
 
 
@@ -97,3 +97,51 @@ class TestDelete:
 
         with pytest.raises(ObjectStorageError):
             await storage.delete("hero-abc123.webp")
+
+
+class TestGet:
+    async def test_returns_stored_object_with_data_and_content_type(self) -> None:
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["method"] = request.method
+            captured["url"] = str(request.url)
+            captured["headers"] = request.headers
+            return httpx.Response(
+                200,
+                content=b"webp-bytes-here",
+                headers={"Content-Type": "image/webp"},
+            )
+
+        storage = _storage(handler)
+
+        result = await storage.get("hero-abc123.webp")
+
+        assert isinstance(result, StoredObject)
+        assert result.data == b"webp-bytes-here"
+        assert result.content_type == "image/webp"
+        assert captured["method"] == "GET"
+        assert "/object/product-photos/hero-abc123.webp" in captured["url"]
+        assert captured["headers"]["authorization"] == "Bearer service-role-key"
+        assert captured["headers"]["apikey"] == "service-role-key"
+
+    async def test_raises_object_storage_error_on_404(self) -> None:
+        # Unlike `delete`, a missing object is NOT idempotent success --
+        # a caller asking for bytes cannot proceed without them (design.md
+        # DD1).
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"message": "not found"})
+
+        storage = _storage(handler)
+
+        with pytest.raises(ObjectStorageError):
+            await storage.get("does-not-exist.webp")
+
+    async def test_raises_object_storage_error_on_other_failure_status(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, json={"message": "internal error"})
+
+        storage = _storage(handler)
+
+        with pytest.raises(ObjectStorageError):
+            await storage.get("hero-abc123.webp")
