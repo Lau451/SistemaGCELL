@@ -650,27 +650,92 @@ UI triggers together.
 
 ## Phase 10: `content` Image-Generation Use Case (PR 10, base = PR 9)
 
-- [ ] 10.1 RED `backend/tests/unit/shared/test_supabase_storage.py` (extend)
+- [x] 10.1 RED `backend/tests/unit/shared/test_supabase_storage.py` (extend)
       — `get()` returns `StoredObject(data, content_type)` from the response
       body/header; a 404 → `ObjectStorageError` (not silently swallowed,
       unlike `delete`).
-- [ ] 10.2 GREEN `backend/src/gcell/shared/application/object_storage.py` —
+      Result: added a new `TestGet` class (3 tests: returns
+      `StoredObject` with data + `content_type` from the mocked
+      response body/`Content-Type` header, 404 → `ObjectStorageError`,
+      other non-2xx → `ObjectStorageError`) — same `httpx.MockTransport`
+      pattern as the existing `TestPut`/`TestDelete` classes (unit test
+      with injected transport, per the explicit instruction that this is
+      acceptable and matches the file's established convention).
+      Confirmed RED (`ImportError: cannot import name 'StoredObject'`)
+      before 10.2/10.3.
+- [x] 10.2 GREEN `backend/src/gcell/shared/application/object_storage.py` —
       `StoredObject` dataclass, `get(path) -> StoredObject` on the
       `ObjectStorage` Protocol (DD1).
-- [ ] 10.3 GREEN `backend/src/gcell/shared/infrastructure/supabase_storage.py`
+      Result: `StoredObject(data: bytes, content_type: str)` frozen
+      dataclass + `get(path) -> StoredObject` added to the `ObjectStorage`
+      Protocol between `put` and `delete`, docstring states the
+      not-idempotent-on-404 contrast with `delete` verbatim from
+      design.md's DD1 code block.
+- [x] 10.3 GREEN `backend/src/gcell/shared/infrastructure/supabase_storage.py`
       — `GET /object/{bucket}/{path}`, non-2xx → `ObjectStorageError`.
-- [ ] 10.4 RED `backend/tests/unit/content/test_generate_image_alt_text.py`
+      Result: `SupabaseStorage.get` — `client.get(f"/object/{bucket}/{path}")`,
+      any `status_code >= 400` (including 404) raises `ObjectStorageError`;
+      `StoredObject` built from `response.content` +
+      `response.headers["content-type"]`. 9/9 `test_supabase_storage.py`
+      green (`TestPut`/`TestDelete` unchanged, `TestGet` new).
+- [x] 10.4 RED `backend/tests/unit/content/test_generate_image_alt_text.py`
       — one Gemini image-input call per invocation, targets exactly one
       image (spec "Alt text generation targets one image"); returns a draft
       `alt_text`, applies to no other image; blank/missing `alt_text` →
       `GenerationError` (DD6: single-key schema, no partial-output leniency
       for alt text).
-- [ ] 10.5 GREEN `backend/src/gcell/content/application/generate_image_alt_text.py`
+      Result: new file, 8 tests across 5 classes
+      (`TestOneImageInputCallPerInvocation`/`TestNoPartialOutputLeniency`/
+      `TestOverCapTrimming`/`TestIDORGuard`/`TestNoWriteSideEffect`) using
+      `FakeContentGenerator`/`FakeProductContextReader`/`FakeObjectStorage`.
+      Confirmed RED (`ModuleNotFoundError: No module named
+      'gcell.content.application.generate_image_alt_text'`) before 10.5.
+      Also covers the `ImagePart` carries the exact fetched bytes +
+      `content_type` (proves the DD1 seam feeds Gemini's image input, not
+      just that a call happened), an unknown/cross-parent `image_id` →
+      `ImageNotFoundError` before any storage/Gemini call (IDOR guard,
+      mirrors PR 8/9's pattern), and an `ObjectStorage.get` failure
+      propagating without a Gemini call — implied by design.md's sequence
+      diagram but not spelled out in this task's own text.
+- [x] 10.5 GREEN `backend/src/gcell/content/application/generate_image_alt_text.py`
       — `photo_context` (Phase 8) → `ObjectStorage.get` (10.2) →
       `ContentGenerator.generate_json` with an `ImagePart`.
-- [ ] 10.6 Verify spec "Generating alt text does not persist anything": no
+      Result: `GenerateImageAltTextUseCase(content_generator,
+      context_reader, object_storage)`. `photo_context(product_id,
+      image_id)` → `None` raises `ImageNotFoundError(image_id,
+      product_id)` (reused from `products.application.exceptions`, same
+      plain-exception-type-import pattern as PR 9's `ProductNotFoundError`
+      reuse — not a repository dependency) before any storage/Gemini call.
+      `object_storage.get(photo.storage_path)` → `StoredObject` →
+      `ImagePart(data=stored.data, mime_type=stored.content_type)`, sent
+      as the single `image=` kwarg to `generate_json` alongside a
+      one-key `{"alt_text": ...}` `response_schema`. DD6 single-key
+      policy: blank/missing `alt_text` → `GenerationError` immediately (no
+      fallback field, unlike copy generation); present value trimmed via
+      `trim_to_cap(alt_text, ALT_TEXT_CAP)`. 8/8 10.4 tests green.
+- [x] 10.6 Verify spec "Generating alt text does not persist anything": no
       repository/storage write call anywhere in this use case's dependency
       graph.
+      Result: confirmed — `GenerateImageAltTextUseCase`'s only three
+      constructor fields are `ContentGenerator`/`ProductContextReader`/
+      `ObjectStorage`, and `object_storage` is called only via `.get`
+      (a read), never `.put`/`.delete`; grepped the file for
+      `.add(`/`.update(`/`.soft_delete(`/`.delete(`/`.put(`/`Repository`:
+      zero matches beyond doc-comment prose. `test_domain_dependencies.py`
+      (DD5) and `test_domain_boundary.py` both still green.
+      `backend/tests/unit` + `backend/tests/architecture`: 282/282 passed
+      (up from 271 after PR 9 — 8 new alt-text tests + 3 new
+      `TestGet` tests + 1 pre-existing net changed to 0). Full backend
+      suite run against local Supabase, split by directory (the full
+      monolithic `pytest -q` invocation intermittently errors 135
+      `db_pool`-dependent tests on this machine from apparent
+      connection-pool contention across ~135 concurrent fixtures in one
+      process — reproduced identically on the pre-Phase-10 baseline via
+      `git stash -u`, confirmed pre-existing and unrelated to this PR's
+      diff): `pytest backend/tests/unit backend/tests/architecture` →
+      282 passed; `pytest backend/tests/integration/db` → 133 passed;
+      `pytest backend/tests/integration/api` → 94 passed. Total 509/509,
+      0 failed.
 
 ## Phase 11: Wiring — Routes + Admin UI Triggers (PR 11, base = PR 10 + PR 3 + PR 5)
 

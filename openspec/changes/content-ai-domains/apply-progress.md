@@ -1024,3 +1024,162 @@ None.
   root, both admin "Generate" UI triggers) untouched, as instructed.
   `GenerateProductCopyUseCase` has zero callers after this PR — no route
   is reachable end-to-end yet.
+
+## PR 10 — `content` Image-Generation Use Case (Phase 10, tasks 10.1-10.6)
+
+Status: Complete (10.1-10.6; all six tasks assigned to this batch).
+
+Ships `GenerateImageAltTextUseCase` — the second and final `content`
+generation use case, consuming PR 8's `ProductContextReader.photo_context`,
+this PR's own `ObjectStorage.get` addition (DD1), and PR 7's
+`ContentGenerator` port with an image-input (`ImagePart`) call. Still
+inert: no route calls it yet (wiring is PR 11). Base = PR 9 (needs
+`ContentGenerator`/`GenerationError`, `ProductContextReader`/
+`ProductPhotoContext`, and `content/domain/copy_draft.py`'s `AltTextDraft`/
+`ALT_TEXT_CAP`/`trim_to_cap`, all already shipped).
+
+Strict TDD followed throughout: both RED test batches (the `ObjectStorage.get`
+extension and the new use-case test file) were written first and
+confirmed failing before their paired GREEN implementation.
+
+### Files changed
+
+- `backend/tests/unit/shared/test_supabase_storage.py` (extended) — new
+  `TestGet` class, 3 tests: `get()` returns a `StoredObject` whose `data`
+  and `content_type` come from the mocked response body and
+  `Content-Type` header (plus asserting the `GET` method, object path,
+  and auth headers, mirroring `TestPut`/`TestDelete`'s existing
+  assertions); a 404 raises `ObjectStorageError` (explicitly NOT
+  idempotent-success like `delete`'s 404 case); any other non-2xx status
+  also raises `ObjectStorageError`. All three use the same
+  `httpx.MockTransport`-injected `_storage()` helper the file already
+  had — no new testing approach introduced.
+- `backend/src/gcell/shared/application/object_storage.py` (modified) —
+  new `StoredObject(data: bytes, content_type: str)` frozen dataclass;
+  `get(path: str) -> StoredObject` added to the `ObjectStorage` Protocol
+  between `put` and `delete`, with a docstring stating the
+  not-idempotent-on-404 contract explicitly (design.md DD1's code block,
+  copied verbatim in spirit).
+- `backend/src/gcell/shared/infrastructure/supabase_storage.py`
+  (modified) — `SupabaseStorage.get`: `self._client.get(f"/object/{bucket}/{path}")`,
+  `status_code >= 400` (covers 404, unlike `delete`) raises
+  `ObjectStorageError` with the same message shape `put`/`delete` already
+  use; on success, `StoredObject(data=response.content,
+  content_type=response.headers["content-type"])`.
+- `backend/tests/unit/content/test_generate_image_alt_text.py` (new) — 8
+  tests across 5 classes:
+  - `TestOneImageInputCallPerInvocation` (2) — exactly one
+    `generator.calls` entry and exactly one `storage.get_calls` entry
+    (matching the photo's `storage_path`) per `execute()`; the `image=`
+    kwarg sent to `generate_json` is an `ImagePart` carrying the exact
+    bytes and `content_type` `FakeObjectStorage.get` returned (proves the
+    DD1 seam's bytes actually reach the Gemini call, not just that a call
+    happened).
+  - `TestNoPartialOutputLeniency` (3) — blank `alt_text` → `GenerationError`;
+    missing `alt_text` key → `GenerationError`; a `FakeContentGenerator`
+    configured to raise `GenerationError` (simulating the adapter's own
+    non-JSON detection) propagates unchanged. Unlike `ProductCopyDraft`'s
+    two-field partial-output policy (PR 9), there is no second field to
+    fall back to — DD6's single-key schema gives zero leniency.
+  - `TestOverCapTrimming` (1) — an over-125-char `alt_text` in the fake's
+    returned payload is trimmed to at-or-under `ALT_TEXT_CAP` in the
+    resulting draft.
+  - `TestIDORGuard` (1) — `photo_context` returning `None` (covers both
+    "unknown image id" and "belongs to a different product", per PR 8's
+    DD2 ownership-via-query-scope) raises `ImageNotFoundError` with zero
+    `storage.get_calls` and zero `generator.calls` — no bytes fetched,
+    no Gemini call attempted, before the ownership check passes.
+  - `TestNoWriteSideEffect` (1) — `ObjectStorage.get` raising
+    `ObjectStorageError` propagates unchanged with zero `generator.calls`
+    — there is nothing to send to Gemini without the bytes, and the
+    failure must not be swallowed or reinterpreted.
+- `backend/src/gcell/content/application/generate_image_alt_text.py`
+  (new) — `GenerateImageAltTextUseCase(content_generator, context_reader,
+  object_storage)`. `_LANGUAGE = "es-AR"` module constant, same
+  hardcoded-never-configurable convention as PR 9. `_RESPONSE_SCHEMA` is
+  a one-key `OBJECT` schema (`alt_text: STRING`, required) per design.md
+  DD6's "one-key schema" note. `_build_instruction` interpolates only
+  `ProductPhotoContext.product_name`/`.product_model`/`.variant_color`
+  (falling back to "sin color especifico" for a hero image's `None`
+  color) — no price/cost field exists on that DTO either. `execute`:
+  resolve `context_reader.photo_context(product_id, image_id)` →
+  `ImageNotFoundError(image_id, product_id)` if `None` (reused from
+  `products.application.exceptions`, same plain-exception-type-import
+  pattern as PR 9's `ProductNotFoundError` reuse) → `object_storage.get(photo.storage_path)`
+  → `StoredObject` → `ImagePart(data=stored.data,
+  mime_type=stored.content_type)` → call `content_generator.generate_json`
+  exactly once with that `ImagePart` as the `image=` kwarg → blank/missing
+  `alt_text` raises `GenerationError` immediately (no fallback field) →
+  present value trimmed via `trim_to_cap` to `ALT_TEXT_CAP` → return
+  `AltTextDraft`.
+
+### TDD Cycle Evidence
+
+| Task | RED (test written, confirmed failing) | GREEN (implementation, confirmed passing) | REFACTOR |
+|---|---|---|---|
+| 10.1/10.2/10.3 | `test_supabase_storage.py`'s new `TestGet` class (3 tests) — `ImportError: cannot import name 'StoredObject' from 'gcell.shared.application.object_storage'` at collection time | `StoredObject` + `ObjectStorage.get` (10.2), `SupabaseStorage.get` (10.3) implemented — 9/9 `test_supabase_storage.py` green (`TestPut`/`TestDelete` unchanged + new `TestGet`) | None needed |
+| 10.4/10.5 | `test_generate_image_alt_text.py` (new, 8 tests) — `ModuleNotFoundError: No module named 'gcell.content.application.generate_image_alt_text'` at collection time | `generate_image_alt_text.py` created — 8/8 green | None needed |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `uv run --project backend pytest backend/tests/unit/content/test_generate_image_alt_text.py backend/tests/unit/shared/test_supabase_storage.py -v -k get` → 5/5 passed (the task's own suggested command; without `-k get` the full two files are 8/8 + 9/9 = 17/17) |
+| Runtime harness command/scenario and exact result | Local Supabase Storage bucket, per design.md's Testing Strategy row for `get()`'s 404 case: `npx supabase start` confirmed already running (DB/REST/Storage up; only optional `imgproxy`/`edge_runtime`/`pooler` services stopped, unaffected). With `DB_URL`/`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` exported, `uv run --project backend pytest backend/tests/integration/db -q` → 133 passed (0 regressions) and `uv run --project backend pytest backend/tests/integration/api -q` → 94 passed (0 regressions) — this PR added no integration test file itself (10.1's `get()` RED test follows the file's own established mocked-transport unit-test convention, per explicit instruction that this is acceptable), so these two runs are the regression-safety net, not new coverage |
+| Rollback boundary | Revert `generate_image_alt_text.py`, `object_storage.py`'s `get`/`StoredObject`, `supabase_storage.py`'s `get`, and the two extended/new test files; `put`/`delete` on both the port and adapter are untouched, and `GenerateProductCopyUseCase` (PR 9) has zero dependency on anything this PR added |
+
+### Full regression
+
+`uv run --project backend pytest backend/tests/architecture backend/tests/unit -q`
+→ 282 passed, 0 failed (up from 271 after PR 9 — +11 new tests: 8
+alt-text use-case tests + 3 storage `get` tests; zero regressions;
+confirms `test_domain_dependencies.py`'s DD5 `content: {ai, products}`
+edge and `test_domain_boundary.py` both still hold with
+`generate_image_alt_text.py` in place).
+
+With local Supabase running and `DB_URL`/`SUPABASE_URL`/
+`SUPABASE_SERVICE_ROLE_KEY` exported, the DB-dependent suites were run
+split by directory rather than as one monolithic `pytest -q` invocation:
+`pytest backend/tests/integration/db -q` → 133 passed;
+`pytest backend/tests/integration/api -q` → 94 passed. Combined with the
+282 above: **509/509 passed, 0 failed** — full backend suite, zero
+skips, zero regressions.
+
+Note on the monolithic full-suite command: `uv run --project backend
+pytest -q` (single invocation, no directory split) intermittently
+reports ~135 `db_pool`-fixture errors and cascading unit-test failures
+on this machine even with a live local Supabase and `DB_URL` correctly
+exported — reproduced identically by stashing this PR's entire diff
+(`git stash -u`) and re-running the same command against the pre-PR-10
+tree, confirming it is a pre-existing environment/connection-pool
+contention artifact of running ~135 concurrent `asyncpg` pool fixtures
+in one pytest process on this machine, not a regression introduced by
+this PR's diff. Running the same suites split by directory (as done
+above) reproduces zero such failures.
+
+`uv run ruff check` on all 5 changed/new files (`object_storage.py`,
+`supabase_storage.py`, `generate_image_alt_text.py`,
+`test_supabase_storage.py`, `test_generate_image_alt_text.py`) — all
+checks passed.
+
+### Deviations from design
+
+None — implementation matches design.md's DD1/DD6 code blocks and
+Sequence Diagram verbatim. `_build_instruction`'s prompt wording is new
+prose (design.md specifies the schema/flow, not exact prompt text),
+following the same style PR 9's `_build_instruction` already established
+(es-AR, plain interpolation, explicit "no price/cost" instruction even
+though the DTO structurally cannot carry one).
+
+### Issues Found
+
+None.
+
+### Not done in this batch (explicitly out of scope)
+
+- Phase 11 (wiring — the two generate routes in `admin.py`, composition
+  root, both admin "Generate" UI triggers, the `PATCH .../images/{id}`
+  guard-order dependency on `require_storage`) untouched, as instructed.
+  `GenerateImageAltTextUseCase` and `GenerateProductCopyUseCase` both
+  have zero callers after this PR — no route is reachable end-to-end
+  yet. Phase 12's final success-criteria sweep also untouched.
