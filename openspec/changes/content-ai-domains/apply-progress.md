@@ -659,3 +659,121 @@ None.
   inert until slice 4").
 - Phase 8+ (`content` domain, generate routes, admin UI "Generate"
   triggers) untouched, as instructed.
+
+## PR 7 — `ai` Domain Adapter (Phase 7, tasks 7.1-7.3)
+
+Status: Complete. Code-only, ZERO live network calls anywhere, including in
+tests (D8/DD4 — CI carries zero secrets). Base = PR 6 (needs
+`ContentGenerator`/`GenerationError`/`GenerationRefusedError` from
+`ai/application/content_generator.py` and `ImagePart` from
+`ai/domain/generation.py`, both already shipped). This PR ships the only
+implementation of the `ContentGenerator` port: a thin `httpx` adapter
+speaking Gemini's REST `:generateContent` endpoint in structured-JSON mode
+(DD6), mirroring `shared/infrastructure/supabase_storage.py`'s adapter
+shape byte for byte. `ai` remains a fully typed, fully tested, but
+completely inert leaf domain after this PR — `GeminiContentGenerator` has
+zero callers (that's PR 9/10), matching design.md's Rollout section
+("Slice 3 (`ai`) is wired to nothing and is inert until slice 4").
+
+Strict TDD followed: the full RED test suite was written and confirmed
+failing (`ModuleNotFoundError`) before the adapter existed.
+
+### Files changed
+
+- `backend/tests/unit/ai/test_gemini_content_generator.py` (new) — 14
+  tests across 5 classes:
+  - `TestRequestShape` (2) — no `inline_data` part when `image=None`;
+    `inline_data.mime_type`/base64 `data` present and correct when an
+    `ImagePart` is given; `responseSchema`/`responseMimeType` always
+    present in `generationConfig`.
+  - `TestSuccessPath` (1) — `candidates[0].content.parts[0].text` parsed
+    as JSON and returned verbatim.
+  - `TestFailureMapping` (6) — 400/500 status → `GenerationError`;
+    `httpx.TimeoutException` → `GenerationError`;
+    `promptFeedback.blockReason` → `GenerationRefusedError`; empty
+    `candidates` list (no `blockReason`) → `GenerationRefusedError`;
+    non-JSON `text` → `GenerationError`; a response missing the
+    `content`/`parts` structure entirely → `GenerationError`.
+  - `TestNoRetry` (2) — handler call count == 1 on both a failure path
+    (503) and the success path (Threat-Matrix "Process integration" row).
+  - `TestSecretExposure` (2) — the configured API key appears in the
+    captured `x-goog-api-key` request header and is absent from both a
+    `GenerationError` raised on a 500 status and one raised on a timeout
+    (Threat-Matrix "Secret exposure" row).
+- `backend/src/gcell/ai/infrastructure/gemini_content_generator.py`
+  (new) — `GeminiContentGenerator(ContentGenerator)`: constructor takes
+  `api_key`, `model`, and an optional `transport:
+  httpx.AsyncBaseTransport | None`; builds one `httpx.AsyncClient` at
+  construction (`base_url="https://generativelanguage.googleapis.com"`,
+  header `x-goog-api-key` set once, `httpx.Timeout(30.0, connect=5.0)`).
+  `generate_json` builds the request body exactly per design.md's
+  Interfaces/Contracts JSON shape (`contents[0].parts` — `{"text":
+  instruction}` plus an optional `{"inline_data": {"mime_type",
+  "data": <base64>}}`; `generationConfig` —
+  `responseMimeType:"application/json"`, `responseSchema`,
+  `temperature:0.4`, `maxOutputTokens`), `POST
+  {base}/v1beta/models/{model}:generateContent`. No retry — a single
+  `try/except httpx.TimeoutException` wraps the one `client.post` call
+  only. Failure mapping: status >= 400 → `GenerationError`;
+  `promptFeedback.blockReason` → `GenerationRefusedError`; empty
+  `candidates` → `GenerationRefusedError`; missing
+  `content.parts[0].text` (KeyError/IndexError/TypeError) →
+  `GenerationError`; `json.loads` failure or a non-`Mapping` JSON result
+  → `GenerationError`. Every raised exception's message is built only
+  from the Gemini response's own status/body/block-reason — the API key
+  is never interpolated into any exception message.
+
+### TDD Cycle Evidence
+
+| Task | RED (test written, confirmed failing) | GREEN (implementation, confirmed passing) | REFACTOR |
+|---|---|---|---|
+| 7.1/7.2 | `test_gemini_content_generator.py` (new, 14 tests) — `ModuleNotFoundError: No module named 'gcell.ai.infrastructure.gemini_content_generator'` at collection time, before the adapter module existed | `gemini_content_generator.py` created — 14/14 green | None needed |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `uv run --project backend pytest backend/tests/unit/ai/test_gemini_content_generator.py -v` → 14/14 passed |
+| Runtime harness command/scenario and exact result | N/A by design (DD4) — CI carries zero secrets, the adapter constructor takes `transport: httpx.AsyncBaseTransport \| None`, and every one of the 14 tests runs under `httpx.MockTransport`. No live-network harness exists or should exist pre-key; verified no test constructs the adapter without passing `transport=` explicitly (grep confirms every `_generator(...)` call site in the test file supplies a `MockTransport`) |
+| Rollback boundary | Revert `gemini_content_generator.py` and its test file; `ai` stays a working-but-unwired leaf domain exactly as PR 6 left it — nothing outside this PR's two files references `GeminiContentGenerator` yet |
+
+### Full regression (DB-independent subset)
+
+`uv run --project backend pytest backend/tests/unit backend/tests/architecture -q`
+→ 241 passed, 0 failed (up from 227 after PR 6 — +14 new tests, zero
+regressions). `uv run ruff check` on both new files — all checks passed.
+Full DB-dependent suite (`integration/db`, `integration/api`) not
+independently re-run in this apply session (same documented pattern as PR
+6 — no `DB_URL`/local Supabase Postgres running at apply time; this PR
+touches no repository/route/integration-test file, so the DB-independent
+241/241 result is the complete coverage this diff can possibly affect).
+Independent re-verification with a running local Supabase Postgres is the
+orchestrator's job, same as every prior PR in this change.
+
+### Deviations from design
+
+None — implementation matches design.md's DD4/DD6 and the
+`gemini-generation` spec delta exactly. The Interfaces/Contracts section's
+JSON request shape, the `x-goog-api-key` header, `/v1beta` path pinning,
+`httpx.Timeout(30.0, connect=5.0)`, and the no-retry policy are all
+reproduced verbatim. Two failure branches not spelled out in task 7.1's
+own text but required by design.md's DD4/DD6 failure-mapping table were
+added and tested: an empty `candidates` list with no `blockReason` (DD6:
+"no usable candidate") maps to `GenerationRefusedError`, and a response
+missing the `content`/`parts` structure entirely maps to `GenerationError`
+alongside the explicitly-named non-JSON-text case — same
+necessary-but-unlisted category as prior PRs' documented deviations, this
+time inside a single new test file rather than an extra production file.
+
+### Issues Found
+
+None.
+
+### Not done in this batch (explicitly out of scope)
+
+- Phase 8+ (`content` domain seam, generate use cases, generate routes,
+  admin UI "Generate" triggers) untouched, as instructed.
+  `GeminiContentGenerator` has zero callers after this PR — `content/`
+  (PR 8-10) is the first consumer of the `ContentGenerator` port, and
+  `api/admin.py`'s composition root (PR 11) is the first place a real
+  `GEMINI_API_KEY` reaches this adapter.

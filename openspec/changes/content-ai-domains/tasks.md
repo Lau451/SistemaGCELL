@@ -479,7 +479,7 @@ UI triggers together.
 
 ## Phase 7: `ai` Domain Adapter (PR 7, base = PR 6)
 
-- [ ] 7.1 RED `backend/tests/unit/ai/test_gemini_content_generator.py` (new,
+- [x] 7.1 RED `backend/tests/unit/ai/test_gemini_content_generator.py` (new,
       mirrors `test_supabase_storage.py`) — request body carries
       `responseSchema` + `inline_data` when an `ImagePart` is given, omitted
       when `image=None`; success path parses `candidates[0].content.parts[0].text`
@@ -490,13 +490,43 @@ UI triggers together.
       integration" row); `GEMINI_API_KEY` appears only in the `x-goog-api-key`
       request header, never in a raised exception's message (Threat-Matrix
       "Secret exposure" row).
-- [ ] 7.2 GREEN `backend/src/gcell/ai/infrastructure/gemini_content_generator.py`
+      Result: new file, 14 tests across 5 classes
+      (`TestRequestShape`/`TestSuccessPath`/`TestFailureMapping`/
+      `TestNoRetry`/`TestSecretExposure`); confirmed RED
+      (`ModuleNotFoundError: No module named
+      'gcell.ai.infrastructure.gemini_content_generator'`) before 7.2.
+      Also covers `no candidates` (empty list, no `blockReason`) as
+      `GenerationRefusedError` — DD6's "no usable candidate" case — and a
+      missing-`parts`-key malformed response as `GenerationError`, both
+      implied by design.md's failure-mapping table but not spelled out in
+      this task's own text.
+- [x] 7.2 GREEN `backend/src/gcell/ai/infrastructure/gemini_content_generator.py`
       — thin `httpx` adapter, constructor-injected
       `transport: httpx.AsyncBaseTransport | None`, `httpx.Timeout(30.0,
       connect=5.0)`, `POST {base}/v1beta/models/{model}:generateContent`.
-- [ ] 7.3 Verify `gemini-generation` spec scenarios: "Adapter tests run
+      Result: `GeminiContentGenerator(ContentGenerator)` — byte-for-byte
+      `SupabaseStorage` adapter shape (constructor-injected `transport`,
+      `httpx.AsyncClient` built once in `__init__`); base URL
+      `https://generativelanguage.googleapis.com`, `/v1beta` pinned in the
+      path (DD4); `x-goog-api-key` header set once at construction, never
+      re-derived or logged; request body matches design.md's Interfaces/
+      Contracts JSON shape verbatim (`contents[0].parts`,
+      `generationConfig.{responseMimeType,responseSchema,temperature:0.4,
+      maxOutputTokens}`); `httpx.TimeoutException` caught around the single
+      `client.post` call only (no retry loop — DD4/D6). 14/14 7.1 tests
+      green.
+- [x] 7.3 Verify `gemini-generation` spec scenarios: "Adapter tests run
       offline" (zero network calls under `httpx.MockTransport`), "Gemini
       call failure surfaces as an error" (never `200` with an empty draft).
+      Result: both scenarios hold — every one of 7.1's 14 tests constructs
+      the adapter with `transport=httpx.MockTransport(handler)` only (no
+      base `httpx.Client`/`AsyncClient` default transport reachable, no
+      real socket opened); `TestFailureMapping`'s 6 cases and
+      `TestSecretExposure`'s 2 cases all assert a raised exception
+      (`GenerationError`/`GenerationRefusedError`), never a `200` return
+      value, for every failure mode design.md's DD4 table lists (4xx, 5xx,
+      timeout, safety block, no candidates, non-JSON text, malformed
+      structure).
 
 ## Phase 8: `content` DD2 Seam (PR 8, base = PR 2 + PR 5)
 
