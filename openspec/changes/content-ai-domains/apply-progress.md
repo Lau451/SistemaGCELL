@@ -1526,13 +1526,15 @@ boxes in the whole document:
 - **2.9** — "Verify `admin-product-management`/`product-persistence`
   spec scenarios: 'Product is created with only manually typed copy'
   (key unset), 'creatable with both fields blank', 'editing updates
-  both fields independently'." This was NOT assigned to this batch
-  (Phase 12 only covered 12.1-12.4) and was left unmarked by whichever
-  earlier PR 2 batch implemented Phase 2 — it appears substantively
-  covered by 2.7's RED tests
-  (`test_post_with_description_fields_persists_and_echoes_both`,
-  `test_post_omitting_description_fields_leaves_both_null`,
-  `test_patch_updates_description_fields_independently`, all green per
-  2.8's Result note) but was never explicitly re-verified and checked
-  off as its own task. Flagged here, left untouched, and NOT marked
-  `[x]` — outside this batch's assigned scope to fix or claim.
+  both fields independently'." This was NOT assigned to this batch's
+  sdd-apply run (Phase 12 only covered 12.1-12.4) and was left unmarked
+  by whichever earlier PR 2 batch implemented Phase 2 — flagged here by
+  the apply agent as out of its own scope to fix or claim.
+
+  **Orchestrator note (same commit):** closed out after independent
+  verification, since it required no new code, only confirmation. "Key
+  unset" is structural: `create_admin_product`/`update_admin_product`
+  (`admin.py`) depend only on `require_db_pool`, never
+  `require_gemini` — confirmed by reading both route signatures
+  directly. The other two scenarios are covered by 2.7's tests noted
+  above, all green. Marked `[x]` in `tasks.md` with this evidence.
