@@ -90,33 +90,77 @@ UI triggers together.
 
 ## Phase 2: Backend Write Path (PR 2, base = PR 1) — zero Gemini dependency
 
-- [ ] 2.1 RED `backend/tests/unit/products/test_product.py` — construct
+- [x] 2.1 RED `backend/tests/unit/products/test_product.py` — construct
       `Product` without `description`/`short_description`: both default
       `None`, construction does not fail (spec: "Description fields default
       to None").
-- [ ] 2.2 GREEN `backend/src/gcell/products/domain/product.py` — add
+      Result: no `test_product.py` exists — extended the existing
+      `backend/tests/unit/products/test_product_domain.py` (the repo's
+      actual domain-test file, same role) with
+      `test_product_description_fields_default_to_none` and
+      `test_product_description_fields_can_be_set`; confirmed RED
+      (`AttributeError`/`TypeError`) before 2.2.
+- [x] 2.2 GREEN `backend/src/gcell/products/domain/product.py` — add
       `description: str | None = None`, `short_description: str | None =
       None` after `variants`.
-- [ ] 2.3 RED extend adapter-parity suite (existing file covering
+      Result: done; `test_product_domain.py` 19/19 green.
+- [x] 2.3 RED extend adapter-parity suite (existing file covering
       Postgres + in-memory) — round-trip both fields through
       create/read/update; update changes only `short_description`,
       `description` unchanged (spec scenarios).
-- [ ] 2.4 GREEN `backend/src/gcell/products/infrastructure/postgres_product_repository.py`
+      Result: no product-level parity file existed (only
+      `test_product_image_repository_adapter_parity.py` did) — created
+      `backend/tests/integration/db/test_product_repository_adapter_parity.py`
+      following that exact pattern (both adapters, same operations, same
+      final state); confirmed RED against local Supabase Postgres
+      (`fetched.description == None` vs expected value) before 2.4.
+- [x] 2.4 GREEN `backend/src/gcell/products/infrastructure/postgres_product_repository.py`
       — add `p.description, p.short_description` to `_SELECT_COLUMNS`,
       `_INSERT_PRODUCT`, `_UPDATE_PRODUCT_FIELDS`, `_rows_to_product`.
-- [ ] 2.5 GREEN `backend/src/gcell/products/infrastructure/in_memory_product_repository.py`
+      Result: done.
+- [x] 2.5 GREEN `backend/src/gcell/products/infrastructure/in_memory_product_repository.py`
       — mirror 2.4 for parity.
-- [ ] 2.6 GREEN `backend/src/gcell/products/application/{create_product,update_product,register_product}.py`
+      Result: done in `update()`; also fixed `soft_delete_variant()`, which
+      reconstructed `Product` without carrying `description`/
+      `short_description` through — would have silently wiped both fields
+      on variant retirement (found during apply, not in the original task
+      scope, but required for adapter parity to actually hold).
+- [x] 2.6 GREEN `backend/src/gcell/products/application/{create_product,update_product,register_product}.py`
       — carry both fields through as full-replacement scalars (like
       `name`/`model`); `repository.py` docstring updated to note `update`
       now persists both text fields.
-- [ ] 2.7 RED `backend/tests/integration/api/test_admin_products.py` —
+      Result: `create_product.py`/`update_product.py` updated with two new
+      optional kwargs (default `None`); `register_product.py` needed no
+      change (already accepts a fully-built `Product`); `repository.py`
+      docstring extended. Also updated
+      `backend/src/gcell/stock/application/create_stocked_product.py`
+      (`CreateStockedProductUseCase.execute`) — not in design.md's File
+      Changes table, but this is the use case `admin.py`'s `POST
+      /admin/products` route actually calls (composes with stock seeding),
+      not `CreateProductUseCase` directly; without this change the create
+      route could never round-trip either field. Deviation documented in
+      that file's docstring.
+- [x] 2.7 RED `backend/tests/integration/api/test_admin_products.py` —
       create/update a product with both fields via the admin API; response
       echoes both; omitting both on create leaves both null.
-- [ ] 2.8 GREEN `backend/src/gcell/api/admin.py` — add both fields to the
+      Result: no `test_admin_products.py` exists — extended the existing
+      `backend/tests/integration/api/test_admin.py` (the repo's actual
+      product-write-route test file) with
+      `test_post_with_description_fields_persists_and_echoes_both`,
+      `test_post_omitting_description_fields_leaves_both_null`,
+      `test_patch_updates_description_fields_independently`, and
+      `test_post_over_cap_short_description_returns_422`; confirmed RED
+      (`KeyError`/422-from-`extra=forbid`) before 2.8.
+- [x] 2.8 GREEN `backend/src/gcell/api/admin.py` — add both fields to the
       product write/response Pydantic models with `Field(max_length=160)`
       (`short_description`) / `Field(max_length=4000)` (`description`) —
       DD4's over-cap-save 422 policy.
+      Result: `AdminProductResponse` and `AdminProductWriteRequest` both
+      updated; `create_admin_product`/`update_admin_product` routes pass
+      both fields through to their use cases. 2.7's 4 RED tests + all
+      pre-existing `test_admin.py` tests green (28 passed, 1 skipped
+      needing `db_pool` — separately confirmed green against local
+      Supabase). Full backend suite: 432/432 passed.
 - [ ] 2.9 Verify `admin-product-management`/`product-persistence` spec
       scenarios: "Product is created with only manually typed copy" (key
       unset), "creatable with both fields blank", "editing updates both
