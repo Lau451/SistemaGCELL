@@ -56,27 +56,37 @@ UI triggers together.
 
 ## Phase 1: Schema + Frontend Contract (PR 1) — zero Gemini dependency
 
-- [ ] 1.1 RED `backend/tests/integration/db/test_rls_policies.py` — extend the
+- [x] 1.1 RED `backend/tests/integration/db/test_rls_policies.py` — extend the
       catalog-view assertion: `anon` selects `short_description` from
       `catalog_products` and it is present (null) on an existing row.
-- [ ] 1.2 GREEN `supabase/migrations/<ts>_products_short_description.sql` —
+      Result: added `test_restricted_role_reads_short_description_null_on_existing_row`,
+      parametrized over `RESTRICTED_ROLES` (`anon`/`authenticated`).
+- [x] 1.2 GREEN `supabase/migrations/<ts>_products_short_description.sql` —
       `alter table products add column short_description text;` +
       `create or replace view catalog_products with (security_invoker = false)
       as select id, slug, name, description, created_at, short_description
       from products where deleted_at is null;` (DD7 append-only, preserves
       grants).
-- [ ] 1.3 Verify Requirement "Short_description defaults to null on existing
+      Result: `supabase/migrations/20260817000000_products_short_description.sql`,
+      literal SQL from design.md.
+- [x] 1.3 Verify Requirement "Short_description defaults to null on existing
       rows" and "Anon can still read the catalog view after the migration"
       (`product-catalog-schema` spec) both pass against 1.1's extended test.
-- [ ] 1.4 RED `frontend/src/lib/catalog/queries.test.ts` (or equivalent
+      Result: both scenarios covered by 1.1's new test; full RLS suite green
+      (66 passed) against local Supabase Postgres.
+- [x] 1.4 RED `frontend/src/lib/catalog/queries.test.ts` (or equivalent
       columns-conformance test) — `CATALOG_PRODUCT_COLUMNS` must include
       `short_description`; existing `select("*")`-ban grep still passes.
-- [ ] 1.5 GREEN `frontend/src/lib/catalog/columns.ts` — append
+      Result: extended `frontend/src/lib/catalog/columns.test.ts`'s existing
+      column-list assertion.
+- [x] 1.5 GREEN `frontend/src/lib/catalog/columns.ts` — append
       `short_description` to `CATALOG_PRODUCT_COLUMNS` (DD7 column order:
       after `created_at`).
-- [ ] 1.6 GREEN `frontend/src/lib/catalog/types.ts` — add
+      Result: done, column order matches the view.
+- [x] 1.6 GREEN `frontend/src/lib/catalog/types.ts` — add
       `short_description: string | null` to `CatalogProductRow`, matching
       the view column-for-column.
+      Result: done.
 
 ## Phase 2: Backend Write Path (PR 2, base = PR 1) — zero Gemini dependency
 
