@@ -32,6 +32,9 @@ class ProductRepository(Protocol):
         transaction. NEVER deletes or retires a variant. Raises
         `ProductNotFoundError` if no ACTIVE product with that id exists.
         `slug` is never accepted or altered -- it is frozen at creation.
+        `update` now also persists `description` and `short_description` as
+        full-replacement scalars, exactly like `name`/`model` -- a caller
+        omitting either clears it (content-ai-domains PR2).
         """
         ...
 

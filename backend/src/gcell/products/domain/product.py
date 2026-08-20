@@ -89,6 +89,8 @@ class Product:
     name: str
     model: str
     variants: list[ProductVariant] = field(default_factory=list)
+    description: str | None = None
+    short_description: str | None = None
 
     def __post_init__(self) -> None:
         if not self.name or not self.name.strip():

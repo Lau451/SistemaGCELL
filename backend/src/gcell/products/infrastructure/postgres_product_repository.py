@@ -25,7 +25,7 @@ from gcell.products.domain.product import Product, ProductVariant
 from gcell.shared.infrastructure.postgres import transaction
 
 _SELECT_COLUMNS = """
-    p.id, p.slug, p.name, p.model,
+    p.id, p.slug, p.name, p.model, p.description, p.short_description,
     v.id AS variant_id, v.color, v.price, v.cost
 """
 
@@ -54,7 +54,8 @@ _SELECT_ALL = f"""
 """
 
 _INSERT_PRODUCT = """
-    INSERT INTO products (id, slug, name, model) VALUES ($1, $2, $3, $4)
+    INSERT INTO products (id, slug, name, model, description, short_description)
+    VALUES ($1, $2, $3, $4, $5, $6)
 """
 
 _INSERT_VARIANT = """
@@ -63,7 +64,7 @@ _INSERT_VARIANT = """
 """
 
 _UPDATE_PRODUCT_FIELDS = """
-    UPDATE products SET name = $2, model = $3
+    UPDATE products SET name = $2, model = $3, description = $4, short_description = $5
     WHERE id = $1 AND deleted_at IS NULL
 """
 
@@ -111,6 +112,8 @@ def _rows_to_product(rows: list[asyncpg.Record]) -> Product:
         name=first["name"],
         model=first["model"],
         variants=variants,
+        description=first["description"],
+        short_description=first["short_description"],
     )
 
 
@@ -151,6 +154,8 @@ class PostgresProductRepository:
                     product.slug,
                     product.name,
                     product.model,
+                    product.description,
+                    product.short_description,
                 )
                 if product.variants:
                     await conn.executemany(
@@ -192,7 +197,12 @@ class PostgresProductRepository:
         """
         async with transaction(self._conn) as conn:
             result = await conn.execute(
-                _UPDATE_PRODUCT_FIELDS, product.id, product.name, product.model
+                _UPDATE_PRODUCT_FIELDS,
+                product.id,
+                product.name,
+                product.model,
+                product.description,
+                product.short_description,
             )
             if _rows_affected(result) == 0:
                 raise ProductNotFoundError(product.id)

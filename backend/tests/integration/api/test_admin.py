@@ -586,6 +586,143 @@ def test_delete_variant_unknown_or_retired_returns_404(monkeypatch) -> None:
     assert response.json() == {"detail": "not_found"}
 
 
+def test_post_with_description_fields_persists_and_echoes_both(monkeypatch) -> None:
+    # content-ai-domains PR2, task 2.7 -- both text fields round-trip
+    # through the admin API create route (admin-product-management spec
+    # "Product is created with only manually typed copy").
+    async def fake_slug_exists(self, slug: str) -> bool:
+        return False
+
+    added: list[Product] = []
+
+    async def fake_add(self, product: Product) -> None:
+        added.append(product)
+
+    monkeypatch.setattr(PostgresProductRepository, "slug_exists", fake_slug_exists)
+    monkeypatch.setattr(PostgresProductRepository, "add", fake_add)
+    token = make_valid_admin_token()
+    body = {
+        "name": "Funda con copy",
+        "model": "TP-1",
+        "variants": [],
+        "description": "Descripcion larga escrita a mano",
+        "short_description": "Blurb corto",
+    }
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.post(
+            "/admin/products", json=body, headers={"Authorization": f"Bearer {token}"}
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["description"] == "Descripcion larga escrita a mano"
+    assert payload["short_description"] == "Blurb corto"
+    assert len(added) == 1
+    assert added[0].description == "Descripcion larga escrita a mano"
+    assert added[0].short_description == "Blurb corto"
+
+
+def test_post_omitting_description_fields_leaves_both_null(monkeypatch) -> None:
+    # admin-product-management spec "Product is creatable with both fields
+    # blank" -- omitting the two keys entirely, not just sending blanks.
+    async def fake_slug_exists(self, slug: str) -> bool:
+        return False
+
+    added: list[Product] = []
+
+    async def fake_add(self, product: Product) -> None:
+        added.append(product)
+
+    monkeypatch.setattr(PostgresProductRepository, "slug_exists", fake_slug_exists)
+    monkeypatch.setattr(PostgresProductRepository, "add", fake_add)
+    token = make_valid_admin_token()
+    body = {"name": "Funda sin copy", "model": "TP-1", "variants": []}
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.post(
+            "/admin/products", json=body, headers={"Authorization": f"Bearer {token}"}
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["description"] is None
+    assert payload["short_description"] is None
+    assert added[0].description is None
+    assert added[0].short_description is None
+
+
+def test_patch_updates_description_fields_independently(monkeypatch) -> None:
+    # admin-product-management spec "Editing updates both fields
+    # independently" -- PATCH persists description/short_description as
+    # full-replacement scalars, exactly like name/model.
+    product = Product(
+        id=uuid4(),
+        slug="test-product",
+        name="Test Product",
+        model="TP-1",
+        variants=[],
+        description="Descripcion original",
+        short_description=None,
+    )
+
+    async def fake_get_by_id(self, product_id):
+        return product if product_id == product.id else None
+
+    updated: list[Product] = []
+
+    async def fake_update(self, edited: Product) -> None:
+        updated.append(edited)
+
+    monkeypatch.setattr(PostgresProductRepository, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(PostgresProductRepository, "update", fake_update)
+    token = make_valid_admin_token()
+    body = {
+        "name": product.name,
+        "model": product.model,
+        "variants": [],
+        "description": product.description,
+        "short_description": "Blurb agregado",
+    }
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.patch(
+            f"/admin/products/{product.id}",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["short_description"] == "Blurb agregado"
+    assert payload["description"] == "Descripcion original"
+    assert updated[0].short_description == "Blurb agregado"
+    assert updated[0].description == "Descripcion original"
+
+
+def test_post_over_cap_short_description_returns_422(monkeypatch) -> None:
+    # DD4 "over-cap save" -- 422 via Pydantic Field(max_length=160), never a
+    # silent truncation.
+    token = make_valid_admin_token()
+    body = {
+        "name": "Test Product",
+        "model": "TP-1",
+        "variants": [],
+        "short_description": "x" * 161,
+    }
+
+    with TestClient(app) as client:
+        client.app.state.db_pool = _FakePool()
+        response = client.post(
+            "/admin/products", json=body, headers={"Authorization": f"Bearer {token}"}
+        )
+
+    assert response.status_code == 422
+
+
 async def test_delete_variant_cross_parent_returns_404_not_403(db_pool) -> None:
     # 3.6 -- the highest-value test in this PR (design.md's threat matrix
     # #1, "IDOR across parents"). A spy CANNOT prove this: the whole point

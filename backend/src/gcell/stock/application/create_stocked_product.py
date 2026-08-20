@@ -17,6 +17,12 @@ quantities never construct one. `StockMovement.__post_init__`'s non-zero
 `quantity_delta` invariant stays a backstop only, never the mechanism (spec
 "the domain's existing non-zero quantity_delta invariant...MUST be relied
 upon, never bypassed").
+
+`description`/`short_description` (content-ai-domains PR2) are threaded
+through here, not only through `CreateProductUseCase`: `admin.py`'s
+`POST /admin/products` route calls THIS use case, not
+`CreateProductUseCase` directly (design.md's File Changes table missed this
+seam -- caught during apply, see apply-progress.md's PR 2 section).
 """
 
 from collections.abc import Mapping
@@ -44,9 +50,19 @@ class CreateStockedProductUseCase:
         model: str,
         variants: list[ProductVariant],
         initial_quantities: Mapping[UUID, int] | None = None,
+        description: str | None = None,
+        short_description: str | None = None,
     ) -> Product:
         slug = await generate_unique_slug(self.products, name)
-        product = Product(id=uuid4(), slug=slug, name=name, model=model, variants=variants)
+        product = Product(
+            id=uuid4(),
+            slug=slug,
+            name=name,
+            model=model,
+            variants=variants,
+            description=description,
+            short_description=short_description,
+        )
         initial_movements = [
             StockMovement(
                 variant_id=variant_id,

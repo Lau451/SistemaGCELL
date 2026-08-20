@@ -72,6 +72,8 @@ class InMemoryProductRepository:
             name=product.name,
             model=product.model,
             variants=list(variants_by_id.values()),
+            description=product.description,
+            short_description=product.short_description,
         )
 
     async def soft_delete(self, product_id: UUID) -> None:
@@ -94,6 +96,8 @@ class InMemoryProductRepository:
             name=product.name,
             model=product.model,
             variants=remaining,
+            description=product.description,
+            short_description=product.short_description,
         )
 
     async def slug_exists(self, slug: str) -> bool:

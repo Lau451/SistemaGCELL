@@ -27,9 +27,22 @@ class CreateProductUseCase:
     repository: ProductRepository
 
     async def execute(
-        self, name: str, model: str, variants: list[ProductVariant]
+        self,
+        name: str,
+        model: str,
+        variants: list[ProductVariant],
+        description: str | None = None,
+        short_description: str | None = None,
     ) -> Product:
         slug = await generate_unique_slug(self.repository, name)
-        product = Product(id=uuid4(), slug=slug, name=name, model=model, variants=variants)
+        product = Product(
+            id=uuid4(),
+            slug=slug,
+            name=name,
+            model=model,
+            variants=variants,
+            description=description,
+            short_description=short_description,
+        )
         register = RegisterProductUseCase(repository=self.repository)
         return await register.execute(product)

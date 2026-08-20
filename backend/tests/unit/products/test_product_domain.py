@@ -136,3 +136,20 @@ def test_variant_with_distinct_ids_are_never_equal() -> None:
     second = make_variant(color="Negro")
 
     assert first != second
+
+
+def test_product_description_fields_default_to_none() -> None:
+    product = make_product()
+
+    assert product.description is None
+    assert product.short_description is None
+
+
+def test_product_description_fields_can_be_set() -> None:
+    product = make_product(
+        description="Funda de silicona transparente antigolpes",
+        short_description="Funda transparente",
+    )
+
+    assert product.description == "Funda de silicona transparente antigolpes"
+    assert product.short_description == "Funda transparente"

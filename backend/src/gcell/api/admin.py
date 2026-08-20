@@ -156,6 +156,8 @@ class AdminProductResponse(BaseModel):
     slug: str
     name: str
     model: str
+    description: str | None
+    short_description: str | None
     variants: list[AdminProductVariantResponse]
 
     @classmethod
@@ -165,6 +167,8 @@ class AdminProductResponse(BaseModel):
             slug=product.slug,
             name=product.name,
             model=product.model,
+            description=product.description,
+            short_description=product.short_description,
             variants=[
                 AdminProductVariantResponse(
                     id=variant.id,
@@ -276,6 +280,12 @@ class AdminProductWriteRequest(BaseModel):
     name: str
     model: str
     variants: list[AdminVariantInput] = []  # empty allowed -- proposal Q4
+    # content-ai-domains PR2: optional, hand-typeable copy fields. Full-
+    # replacement scalars like name/model -- a body omitting either clears
+    # it (DD4's over-cap-save policy is the `max_length` 422, never a
+    # silent truncation).
+    description: str | None = Field(default=None, max_length=4000)
+    short_description: str | None = Field(default=None, max_length=160)
 
 
 def _to_domain_variants(items: list[AdminVariantInput]) -> list[ProductVariant]:
@@ -322,6 +332,8 @@ async def create_admin_product(
                 model=body.model,
                 variants=variants,
                 initial_quantities=_to_seed_quantities(body.variants, variants),
+                description=body.description,
+                short_description=body.short_description,
             )
 
     product = await _execute_or_raise(_create())
@@ -343,6 +355,8 @@ async def update_admin_product(
                 name=body.name,
                 model=body.model,
                 variants=_to_domain_variants(body.variants),
+                description=body.description,
+                short_description=body.short_description,
             )
 
     product = await _execute_or_raise(_update())

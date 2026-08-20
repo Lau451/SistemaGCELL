@@ -37,6 +37,8 @@ class UpdateProductUseCase:
         name: str,
         model: str,
         variants: list[ProductVariant],
+        description: str | None = None,
+        short_description: str | None = None,
     ) -> Product:
         existing = await self.repository.get_by_id(product_id)
         if existing is None:
@@ -60,6 +62,8 @@ class UpdateProductUseCase:
             name=name,
             model=model,
             variants=variants,
+            description=description,
+            short_description=short_description,
         )
         await self.repository.update(to_persist)
 
@@ -72,4 +76,6 @@ class UpdateProductUseCase:
             name=name,
             model=model,
             variants=list(merged_variants.values()),
+            description=description,
+            short_description=short_description,
         )
