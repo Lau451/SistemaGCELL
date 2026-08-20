@@ -530,19 +530,52 @@ UI triggers together.
 
 ## Phase 8: `content` DD2 Seam (PR 8, base = PR 2 + PR 5)
 
-- [ ] 8.1 RED `backend/tests/unit/content/test_products_context_reader.py`
+- [x] 8.1 RED `backend/tests/unit/content/test_products_context_reader.py`
       (new) — `photo_context` returns `None` for another product's image id
       and for an unknown id (spec `admin-ai-content-authoring` /
       Threat-Matrix "IDOR" row, DD2's ownership-via-query-scope design).
-- [ ] 8.2 GREEN `backend/src/gcell/content/application/product_context_reader.py`
+      Result: new file, 8 tests across `TestProductContext`/
+      `TestPhotoContext` (happy-path `product_context`, unknown-product-id
+      → `None`, a structural OQ2 no-price/no-cost field-set assertion via
+      `dataclasses.fields`, owned-image happy path, hero-image
+      `variant_color is None`, unknown image id → `None`, cross-parent
+      image id (IDOR) → `None`, unknown product id → `None`). Confirmed RED
+      (`ModuleNotFoundError: No module named
+      'gcell.content.application.product_context_reader'`) by temporarily
+      moving both 8.2/8.3 files aside and re-running before restoring them.
+- [x] 8.2 GREEN `backend/src/gcell/content/application/product_context_reader.py`
       — `ProductCopyContext` (name, model, colors — **no price/cost field**,
       OQ2), `ProductPhotoContext`, `ProductContextReader` Protocol.
-- [ ] 8.3 GREEN `backend/src/gcell/content/infrastructure/products_context_reader.py`
+      Result: done, matches design.md's DD2 code block verbatim
+      (`ProductCopyContext`/`ProductPhotoContext` frozen dataclasses +
+      `ProductContextReader` Protocol with `product_context`/
+      `photo_context`); imports nothing from `products` — pure DTOs/typing
+      only, so the "no write method reachable from `application/`"
+      guarantee in 8.4 holds by construction, not just by convention.
+- [x] 8.3 GREEN `backend/src/gcell/content/infrastructure/products_context_reader.py`
       — adapter over `ProductRepository`/`ProductImageRepository`
       (`list_for_product` → pick `image_id`, D4: no SQL).
-- [ ] 8.4 Verify spec `admin-ai-content-authoring` "Content has no products
+      Result: `ProductsContextReader(product_repository, image_repository)`
+      — `product_context` calls `get_by_id` only; `photo_context` calls
+      `get_by_id` + `list_for_product(product_id)` and picks `image_id`
+      out of that product-scoped list (never `image_repository.get_by_id`
+      directly), so a cross-parent image id structurally cannot resolve —
+      ownership via query scope exactly as DD2 specifies. Zero DB-driver
+      imports (D4). 8/8 tests from 8.1 green.
+- [x] 8.4 Verify spec `admin-ai-content-authoring` "Content has no products
       repository": `content/application/` depends on `ai` and on
       `products` only through this adapter, never a write method.
+      Result: confirmed — `product_context_reader.py` (application layer)
+      imports only `dataclasses`/`typing`/`uuid`, zero `gcell.products`
+      import; only `products_context_reader.py` (infrastructure layer)
+      imports `ProductRepository`/`ProductImageRepository`, and calls only
+      `get_by_id`/`list_for_product` (read methods) — grepped
+      `content/` for `.add(`/`.update(`/`.soft_delete(`/`.delete(` calls:
+      zero matches. `test_domain_dependencies.py` (DD5,
+      `content: {ai, products}`) and `test_domain_boundary.py` both still
+      green. Full backend suite: 341 passed, 135 skipped (pre-existing
+      `db_pool`-dependent tests, same skip pattern as prior PRs), 0
+      failures — no regression.
 
 ## Phase 9: `content` Text-Generation Use Case (PR 9, base = PR 7 + PR 8)
 

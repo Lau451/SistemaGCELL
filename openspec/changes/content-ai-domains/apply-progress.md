@@ -777,3 +777,104 @@ None.
   (PR 8-10) is the first consumer of the `ContentGenerator` port, and
   `api/admin.py`'s composition root (PR 11) is the first place a real
   `GEMINI_API_KEY` reaches this adapter.
+
+## PR 8 — `content` DD2 Seam (Phase 8, tasks 8.1-8.4)
+
+Status: Complete (8.1-8.4; all four tasks assigned to this batch).
+
+Zero Gemini dependency. Ships `content`'s narrow read-only port
+(`ProductContextReader`) and its products-backed adapter
+(`ProductsContextReader`) — the DD2 seam that lets `content`'s upcoming
+use cases (PR 9-10) read product/photo data without ever importing
+`ProductRepository` directly (the `stock -> products` precedent) and
+without a `price`/`cost` field ever existing on the DTOs it hands back
+(OQ2). This PR is inert: wired to nothing, no route calls it, exercised
+only by its own unit tests against the in-memory `products` repositories.
+Base = PR 2 (needs `Product.description`/`short_description` to exist) +
+PR 5 (needs `ProductImageRepository.update_alt_text`/the alt-text port
+shape to exist) — read only from both, per tasks.md's PR 8 base note.
+
+Strict TDD followed: the RED test file was written first and confirmed
+failing (`ModuleNotFoundError`) by temporarily moving both GREEN files
+aside and re-running before restoring them and confirming GREEN.
+
+### Files changed
+
+- `backend/tests/unit/content/test_products_context_reader.py` (new) — 8
+  tests across `TestProductContext` (happy-path name/model/colors DTO,
+  unknown product id → `None`, a structural OQ2 check asserting
+  `ProductCopyContext`'s dataclass field set is exactly `{name, model,
+  colors}` via `dataclasses.fields` — no `price`/`cost` field exists to
+  leak) and `TestPhotoContext` (owned-image happy path resolves
+  `storage_path`/`product_name`/`product_model`/`variant_color`; a hero
+  image — `variant_id is None` — resolves `variant_color is None`; an
+  unknown image id → `None`; a cross-parent image id, i.e. an image
+  belonging to a different product, → `None` — the Threat-Matrix IDOR
+  case; an unknown product id → `None`).
+- `backend/src/gcell/content/application/product_context_reader.py` (new)
+  — `ProductCopyContext(name, model, colors)` and
+  `ProductPhotoContext(storage_path, product_name, product_model,
+  variant_color)` frozen dataclasses, plus the `ProductContextReader`
+  Protocol (`product_context`, `photo_context`), matching design.md's DD2
+  code block verbatim. Imports only `dataclasses`/`typing`/`uuid` — zero
+  `gcell.products` import, so the "content/application/ never touches a
+  products write method" guarantee (task 8.4) holds structurally, not by
+  convention.
+- `backend/src/gcell/content/infrastructure/products_context_reader.py`
+  (new) — `ProductsContextReader(product_repository, image_repository)`.
+  `product_context` calls `ProductRepository.get_by_id` only.
+  `photo_context` calls `get_by_id` + `ProductImageRepository.
+  list_for_product(product_id)` and picks `image_id` out of that
+  product-scoped list — never `image_repository.get_by_id(image_id)`
+  directly — so ownership is a consequence of the query scope (DD2) and a
+  cross-parent image id structurally cannot resolve, rather than relying
+  on a re-implemented `image.product_id != product_id` predicate. Zero
+  SQL/DB-driver imports (D4).
+
+### Verification
+
+- `uv run --project backend pytest backend/tests/unit/content/test_products_context_reader.py -v`
+  → 8 passed, 0 failed.
+- RED confirmed independently: moved
+  `product_context_reader.py`/`products_context_reader.py` out of the
+  tree, re-ran the same command → 1 collection error
+  (`ModuleNotFoundError: No module named
+  'gcell.content.application.product_context_reader'`), then restored
+  both files and re-ran to confirm the 8/8 GREEN state above.
+- `uv run --project backend pytest backend/tests/architecture/test_domain_dependencies.py backend/tests/architecture/test_domain_boundary.py -v`
+  → 3 passed (DD5's `ALLOWED_EDGES["content"] == {"ai", "products"}` still
+  holds; `content/domain/` stays pure — untouched, empty `__init__.py`
+  only).
+- Full backend suite: `uv run --project backend pytest -q` → 341 passed,
+  135 skipped (pre-existing `db_pool`-dependent integration tests with no
+  local Supabase Postgres running at apply time — same documented skip
+  pattern as PR 6/7), 0 failed, 0 regressions.
+- Task 8.4 (`content/application/` never depends on a products write
+  method) verified by direct inspection: grepped `backend/src/gcell/content/`
+  for `.add(`, `.update(`, `.soft_delete(`, `.delete(` — zero matches.
+- `uv run ruff check` on all 3 new files — all checks passed.
+
+### Deviations from design
+
+None — `ProductCopyContext`/`ProductPhotoContext`/`ProductContextReader`
+reproduce design.md's DD2 code block verbatim (field names, types,
+docstring intent), and the adapter's `photo_context` implements the exact
+"ownership via query scope, never a re-implemented predicate" approach
+DD2 specifies.
+
+### Issues Found
+
+None.
+
+### Not done in this batch (explicitly out of scope)
+
+- Phase 9+ (`content` text/image generation use cases, `copy_draft.py`,
+  `ObjectStorage.get`, generate routes, admin UI "Generate" triggers)
+  untouched, as instructed. `ProductContextReader`/`ProductsContextReader`
+  have zero callers after this PR — `content`'s use cases (PR 9-10) are
+  the first consumers.
+- 8.4's spec-scenario verification here is direct code/import inspection
+  (grep + the existing architecture-test suite), not a new dedicated
+  spec-scenario test file — none was assigned in this task's scope, and
+  no route exists yet to exercise the scenario end-to-end (that lands in
+  PR 11).
