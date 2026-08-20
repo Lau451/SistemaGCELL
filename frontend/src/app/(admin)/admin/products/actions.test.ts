@@ -158,6 +158,58 @@ describe("createProductAction", () => {
     expect(typeof variant.cost).toBe("string");
   });
 
+  it("relays description and short_description when non-blank (content-ai-domains PR3)", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: { id: "p1" },
+    });
+
+    const { createProductAction } = await importActions();
+    await createProductAction(
+      { error: null },
+      formDataFor({
+        name: "Funda iPhone 15",
+        model: "iPhone 15",
+        description: "Descripcion larga",
+        short_description: "Blurb corto",
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: { description?: unknown; short_description?: unknown } },
+    ];
+    expect(init.body.description).toBe("Descripcion larga");
+    expect(init.body.short_description).toBe("Blurb corto");
+  });
+
+  it("omits description and short_description when blank, so the product persists with both null", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 201,
+      body: { id: "p1" },
+    });
+
+    const { createProductAction } = await importActions();
+    await createProductAction(
+      { error: null },
+      formDataFor({
+        name: "Funda iPhone 15",
+        model: "iPhone 15",
+        description: "",
+        short_description: "",
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: Record<string, unknown> },
+    ];
+    expect(init.body).not.toHaveProperty("description");
+    expect(init.body).not.toHaveProperty("short_description");
+  });
+
   it("relays initial_quantity as a verbatim string when non-blank (never Number())", async () => {
     ADMIN_BACKEND_FETCH.mockResolvedValue({
       outcome: "response",
@@ -293,6 +345,36 @@ describe("updateProductAction", () => {
 
     expect(result.error).toBe("ProductVariant.price cannot be negative");
     expect(REDIRECT).not.toHaveBeenCalled();
+  });
+
+  it("relays description unchanged and short_description as edited (content-ai-domains PR3)", async () => {
+    ADMIN_BACKEND_FETCH.mockResolvedValue({
+      outcome: "response",
+      status: 200,
+      body: { id: "p1" },
+    });
+
+    const { updateProductAction } = await importActions();
+    await updateProductAction(
+      "p1",
+      { error: null },
+      formDataFor({
+        name: "Funda iPhone 15",
+        model: "iPhone 15",
+        // Resubmitted verbatim by the form (it always renders both
+        // fields' current values, per product-form.tsx) — proves an
+        // edit to ONLY short_description leaves description untouched.
+        description: "Descripcion original",
+        short_description: "Blurb nuevo",
+      }),
+    );
+
+    const [, init] = ADMIN_BACKEND_FETCH.mock.calls[0] as [
+      string,
+      { body: { description?: unknown; short_description?: unknown } },
+    ];
+    expect(init.body.description).toBe("Descripcion original");
+    expect(init.body.short_description).toBe("Blurb nuevo");
   });
 });
 

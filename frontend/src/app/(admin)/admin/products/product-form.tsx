@@ -35,6 +35,18 @@
  * misleading). Submitted as `variant-initial-quantity`, a parallel
  * repeated field alongside `variant-color`/`variant-price`/`variant-cost`;
  * `actions.ts`'s `buildVariantsPayload` zips it positionally the same way.
+ *
+ * `description`/`short_description` (content-ai-domains PR3, base = PR2)
+ * are two plain, optional, hand-typeable copy fields — no Gemini
+ * reference anywhere in this component. `name`/`short_description` cap
+ * client-side at their backend `Field(max_length=...)` values (4000/160)
+ * as a UX nicety only; the server-side 422 remains authoritative (DD4).
+ * `actions.ts`'s `buildProductPayload` omits either key from the relayed
+ * body when blank (mirroring the existing `reason`/`initial_quantity`
+ * omit-if-blank convention), which is also how an intentional clear is
+ * expressed — the write model's `Field(default=None)` treats an omitted
+ * key as "set to null" (DD4's documented full-replacement semantics, not
+ * a partial PATCH per field).
  */
 import { useActionState, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -56,6 +68,8 @@ export interface ProductFormProps {
   productId?: string;
   initialName?: string;
   initialModel?: string;
+  initialDescription?: string;
+  initialShortDescription?: string;
   initialVariants?: ProductFormVariant[];
 }
 
@@ -96,6 +110,8 @@ export function ProductForm({
   productId,
   initialName = "",
   initialModel = "",
+  initialDescription = "",
+  initialShortDescription = "",
   initialVariants,
 }: ProductFormProps) {
   const [state, formAction, pending] = useActionState(action, INITIAL_STATE);
@@ -177,6 +193,37 @@ export function ProductForm({
           type="text"
           required
           defaultValue={initialModel}
+          className="border-border rounded-md border px-3 py-2 text-sm"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="product-description" className="text-sm font-medium">
+          Description
+        </label>
+        <textarea
+          id="product-description"
+          name="description"
+          defaultValue={initialDescription}
+          maxLength={4000}
+          rows={4}
+          className="border-border rounded-md border px-3 py-2 text-sm"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="product-short-description"
+          className="text-sm font-medium"
+        >
+          Short description
+        </label>
+        <input
+          id="product-short-description"
+          name="short_description"
+          type="text"
+          defaultValue={initialShortDescription}
+          maxLength={160}
           className="border-border rounded-md border px-3 py-2 text-sm"
         />
       </div>

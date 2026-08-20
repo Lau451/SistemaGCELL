@@ -179,6 +179,70 @@ describe("ProductForm", () => {
     expect(screen.queryByLabelText(/initial quantity/i)).not.toBeInTheDocument();
   });
 
+  it("renders labeled description and short description inputs", async () => {
+    const stubAction = vi.fn().mockResolvedValue({ error: null });
+    const ProductForm = await importProductForm();
+
+    render(<ProductForm action={stubAction} submitLabel="Create product" />);
+
+    expect(screen.getByLabelText(/^description$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/short description/i)).toBeInTheDocument();
+  });
+
+  it("submits successfully with description and short_description left blank", async () => {
+    const stubAction = vi.fn().mockResolvedValue({ error: null });
+    const user = userEvent.setup();
+    const ProductForm = await importProductForm();
+
+    render(<ProductForm action={stubAction} submitLabel="Create product" />);
+
+    await user.type(screen.getByLabelText(/name/i), "Funda iPhone 15");
+    await user.type(screen.getByLabelText(/model/i), "iPhone 15");
+    await user.click(
+      screen.getByRole("button", { name: /create product/i }),
+    );
+
+    await waitFor(() => {
+      expect(stubAction).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const [, formData] = stubAction.mock.calls[0] as [unknown, FormData];
+    expect(formData.get("description")).toBe("");
+    expect(formData.get("short_description")).toBe("");
+  });
+
+  it("editing only short_description leaves description untouched in the submitted payload", async () => {
+    const stubAction = vi.fn().mockResolvedValue({ error: null });
+    const user = userEvent.setup();
+    const ProductForm = await importProductForm();
+
+    render(
+      <ProductForm
+        action={stubAction}
+        submitLabel="Save changes"
+        productId="p1"
+        initialName="Funda iPhone 15"
+        initialModel="iPhone 15"
+        initialDescription="Descripcion original larga"
+      />,
+    );
+
+    await user.type(
+      screen.getByLabelText(/short description/i),
+      "Blurb corto",
+    );
+    await user.click(
+      screen.getByRole("button", { name: /save changes/i }),
+    );
+
+    await waitFor(() => {
+      expect(stubAction).toHaveBeenCalledTimes(1);
+    });
+    const [, formData] = stubAction.mock.calls[0] as [unknown, FormData];
+    expect(formData.get("description")).toBe("Descripcion original larga");
+    expect(formData.get("short_description")).toBe("Blurb corto");
+  });
+
   it("uses number inputs with step=0.01 and min=0 for price and cost", async () => {
     const stubAction = vi.fn().mockResolvedValue({ error: null });
     const user = userEvent.setup();

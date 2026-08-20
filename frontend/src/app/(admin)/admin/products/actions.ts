@@ -63,7 +63,32 @@ interface VariantWritePayload {
 interface ProductWritePayload {
   name: string;
   model: string;
+  description?: string;
+  short_description?: string;
   variants: VariantWritePayload[];
+}
+
+/**
+ * `description`/`short_description` follow the same omit-if-blank
+ * convention as `reason`/`initial_quantity` above — a blank field is
+ * dropped from the payload entirely rather than sent as `""`, which is
+ * what makes `AdminProductWriteRequest`'s `Field(default=None)` persist
+ * `null` (spec: "Product is creatable with both fields blank"). Because
+ * the form always re-renders and resubmits BOTH fields' current values
+ * (`product-form.tsx`'s `defaultValue`), an edit to only one field still
+ * relays the other's unchanged, non-blank value here — never omitted,
+ * never accidentally cleared (spec: "Editing updates both fields
+ * independently"). An admin who deliberately blanks a previously-set
+ * field on the form DOES clear it this way — the same full-replacement
+ * semantics `name`/`model` already have, documented in design.md's Open
+ * Questions.
+ */
+function optionalTrimmedField(
+  formData: FormData,
+  key: string,
+): string | undefined {
+  const raw = formData.get(key);
+  return typeof raw === "string" && raw.trim() !== "" ? raw : undefined;
 }
 
 function buildVariantsPayload(formData: FormData): VariantWritePayload[] {
@@ -103,9 +128,16 @@ function buildVariantsPayload(formData: FormData): VariantWritePayload[] {
 }
 
 function buildProductPayload(formData: FormData): ProductWritePayload {
+  const description = optionalTrimmedField(formData, "description");
+  const shortDescription = optionalTrimmedField(formData, "short_description");
+
   return {
     name: String(formData.get("name") ?? ""),
     model: String(formData.get("model") ?? ""),
+    ...(description !== undefined ? { description } : {}),
+    ...(shortDescription !== undefined
+      ? { short_description: shortDescription }
+      : {}),
     variants: buildVariantsPayload(formData),
   };
 }

@@ -74,6 +74,8 @@ interface AdminProduct {
   slug: string;
   name: string;
   model: string;
+  description: string | null;
+  short_description: string | null;
   variants: ProductFormVariant[];
 }
 
@@ -286,6 +288,8 @@ export default async function EditProductPage({
         productId={product.id}
         initialName={product.name}
         initialModel={product.model}
+        initialDescription={product.description ?? ""}
+        initialShortDescription={product.short_description ?? ""}
         initialVariants={product.variants}
         action={updateAction}
         submitLabel="Save changes"
