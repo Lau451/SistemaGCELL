@@ -12,6 +12,7 @@ export interface CatalogProductRow {
   name: string;
   description: string | null;
   created_at: string;
+  short_description: string | null;
 }
 
 export interface CatalogVariantRow {

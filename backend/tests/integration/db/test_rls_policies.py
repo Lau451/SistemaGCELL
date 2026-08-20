@@ -178,6 +178,33 @@ async def test_restricted_role_can_read_seeded_row_from_catalog_view(
     assert count == 1
 
 
+# --- content-ai-domains PR1 (1.1): short_description column on catalog_products
+
+
+@pytest.mark.parametrize("role", RESTRICTED_ROLES)
+async def test_restricted_role_reads_short_description_null_on_existing_row(
+    db_conn: asyncpg.Connection, role: str
+) -> None:
+    """`short_description` (new column, D3/DD7) must be selectable from
+    `catalog_products` and must read back `null` on a row seeded before this
+    column carried any value -- the migration is purely additive, so an
+    existing product's `short_description` has no way to be anything but
+    `null`. Also proves `anon`/`authenticated` can still read the view at
+    all after the `create or replace view` (product-catalog-schema spec
+    scenarios "Short_description defaults to null on existing rows" and
+    "Anon can still read the catalog view after the migration").
+    """
+    product = await _seed_one_product_variant_image(db_conn)
+
+    async with as_role(db_conn, role) as conn:
+        row = await conn.fetchrow(
+            "SELECT short_description FROM catalog_products WHERE id = $1", product.id
+        )
+
+    assert row is not None
+    assert row["short_description"] is None
+
+
 # --- 3.5: soft-delete filtering, as seen by anon ---------------------------
 
 

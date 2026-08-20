@@ -41,6 +41,7 @@ describe("catalog column constants", () => {
       "name",
       "description",
       "created_at",
+      "short_description",
     ]);
   });
 

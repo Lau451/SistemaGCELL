@@ -21,7 +21,7 @@ export type CatalogRelation = (typeof CATALOG_RELATIONS)[number];
  * constants, which a source-grep test (`queries.test.ts`, Phase 2) enforces.
  */
 export const CATALOG_PRODUCT_COLUMNS =
-  "id,slug,name,description,created_at" as const;
+  "id,slug,name,description,created_at,short_description" as const;
 
 export const CATALOG_VARIANT_COLUMNS =
   "id,product_id,phone_model,color,price,in_stock" as const;
