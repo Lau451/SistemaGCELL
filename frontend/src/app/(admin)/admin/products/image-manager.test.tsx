@@ -15,6 +15,7 @@ const UPLOAD_ACTION = vi.fn();
 const DELETE_ACTION = vi.fn();
 const REORDER_ACTION = vi.fn();
 const UPDATE_ALT_TEXT_ACTION = vi.fn();
+const GENERATE_ALT_TEXT_ACTION = vi.fn();
 const ROUTER_REFRESH = vi.fn();
 
 vi.mock("./actions", () => ({
@@ -23,6 +24,8 @@ vi.mock("./actions", () => ({
   reorderProductImagesAction: (...args: unknown[]) => REORDER_ACTION(...args),
   updateProductImageAltTextAction: (...args: unknown[]) =>
     UPDATE_ALT_TEXT_ACTION(...args),
+  generateImageAltTextAction: (...args: unknown[]) =>
+    GENERATE_ALT_TEXT_ACTION(...args),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -317,6 +320,65 @@ describe("ImageManager", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Image not found");
+    });
+    expect(ROUTER_REFRESH).not.toHaveBeenCalled();
+  });
+
+  it("Generate alt text button calls generateImageAltTextAction and prefills the alt-text input without submitting", async () => {
+    GENERATE_ALT_TEXT_ACTION.mockResolvedValue({
+      alt_text: "Funda negra brillante para telefono",
+      error: null,
+    });
+    const user = userEvent.setup();
+    const ImageManager = await importImageManager();
+
+    render(
+      <ImageManager
+        productId="p1"
+        variants={VARIANTS}
+        initialImages={IMAGES}
+      />,
+    );
+
+    const [firstGenerateButton] = screen.getAllByRole("button", {
+      name: /generate alt text/i,
+    });
+    await user.click(firstGenerateButton);
+
+    await waitFor(() => {
+      expect(GENERATE_ALT_TEXT_ACTION).toHaveBeenCalledWith("p1", "img1");
+    });
+    await waitFor(() => {
+      const [firstAltTextInput] = screen.getAllByLabelText(/^alt text$/i);
+      expect(firstAltTextInput).toHaveValue("Funda negra brillante para telefono");
+    });
+    expect(UPDATE_ALT_TEXT_ACTION).not.toHaveBeenCalled();
+    expect(ROUTER_REFRESH).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a Generate alt text failure via role=alert without refreshing", async () => {
+    GENERATE_ALT_TEXT_ACTION.mockResolvedValue({
+      alt_text: null,
+      error: "gemini_unavailable",
+    });
+    const user = userEvent.setup();
+    const ImageManager = await importImageManager();
+
+    render(
+      <ImageManager
+        productId="p1"
+        variants={VARIANTS}
+        initialImages={IMAGES}
+      />,
+    );
+
+    const [firstGenerateButton] = screen.getAllByRole("button", {
+      name: /generate alt text/i,
+    });
+    await user.click(firstGenerateButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("gemini_unavailable");
     });
     expect(ROUTER_REFRESH).not.toHaveBeenCalled();
   });

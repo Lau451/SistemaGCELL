@@ -311,6 +311,99 @@ export async function updateProductImageAltTextAction(
 }
 
 /**
+ * Generate a draft product-copy pair (content-ai-domains PR 11) —
+ * `POST .../copy/generate`, DD5's D5 draft-only contract: this action
+ * NEVER submits `updateProductAction`/`createProductAction` itself, and
+ * the backend route it calls has zero write side effect either way. The
+ * caller (`product-form.tsx`) is responsible for prefilling the two form
+ * fields from the returned draft and leaving the existing "Save changes"
+ * button as the only write path. No request body — the route acts on
+ * exactly the one `productId` in the URL (spec "No bulk generate route
+ * exists").
+ */
+export interface GenerateCopyResult {
+  short_description: string | null;
+  description: string | null;
+  error: string | null;
+}
+
+export async function generateProductCopyAction(
+  productId: string,
+): Promise<GenerateCopyResult> {
+  const result = await adminBackendFetch(
+    `/admin/products/${productId}/copy/generate`,
+    { method: "POST" },
+  );
+
+  if (result.outcome === "unauthenticated") {
+    redirect(ADMIN_LOGIN_PATH);
+  }
+
+  if (result.outcome === "backend_unavailable") {
+    return {
+      short_description: null,
+      description: null,
+      error: BACKEND_UNAVAILABLE_MESSAGE,
+    };
+  }
+
+  if (result.status === 200) {
+    const body = result.body as {
+      short_description: string | null;
+      description: string | null;
+    };
+    return {
+      short_description: body.short_description,
+      description: body.description,
+      error: null,
+    };
+  }
+
+  return {
+    short_description: null,
+    description: null,
+    error: extractAdminError(result.status, result.body),
+  };
+}
+
+/**
+ * Generate a draft alt-text string for one product photo (content-ai-domains
+ * PR 11) — `POST .../images/{image_id}/alt-text/generate`. Same draft-only
+ * contract as `generateProductCopyAction`: the caller (`image-manager.tsx`)
+ * prefills the alt-text input; the existing `updateProductImageAltTextAction`
+ * PATCH remains the only write path.
+ */
+export interface GenerateAltTextResult {
+  alt_text: string | null;
+  error: string | null;
+}
+
+export async function generateImageAltTextAction(
+  productId: string,
+  imageId: string,
+): Promise<GenerateAltTextResult> {
+  const result = await adminBackendFetch(
+    `/admin/products/${productId}/images/${imageId}/alt-text/generate`,
+    { method: "POST" },
+  );
+
+  if (result.outcome === "unauthenticated") {
+    redirect(ADMIN_LOGIN_PATH);
+  }
+
+  if (result.outcome === "backend_unavailable") {
+    return { alt_text: null, error: BACKEND_UNAVAILABLE_MESSAGE };
+  }
+
+  if (result.status === 200) {
+    const body = result.body as { alt_text: string };
+    return { alt_text: body.alt_text, error: null };
+  }
+
+  return { alt_text: null, error: extractAdminError(result.status, result.body) };
+}
+
+/**
  * Reorder a product's images — design.md Decision 6: the full ordered id
  * list, not deltas. Called directly from the (Phase 7) drag-reorder UI
  * rather than bound to a `<form>` submit, so it takes plain arguments

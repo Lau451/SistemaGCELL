@@ -33,6 +33,12 @@ import asyncpg
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
+from gcell.ai.application.content_generator import GenerationError, GenerationRefusedError
+from gcell.ai.infrastructure.gemini_content_generator import GeminiContentGenerator
+from gcell.content.application.generate_image_alt_text import GenerateImageAltTextUseCase
+from gcell.content.application.generate_product_copy import GenerateProductCopyUseCase
+from gcell.content.domain.copy_draft import AltTextDraft, ProductCopyDraft
+from gcell.content.infrastructure.products_context_reader import ProductsContextReader
 from gcell.products.application.delete_product_image import DeleteProductImageUseCase
 from gcell.products.application.exceptions import (
     DuplicateProductSlugError,
@@ -65,8 +71,10 @@ from gcell.products.infrastructure.postgres_product_repository import (
 from gcell.shared.application.object_storage import ObjectStorageError
 from gcell.shared.infrastructure.auth import verify_admin_jwt
 from gcell.shared.infrastructure.dependencies import (
+    GeminiCredentials,
     StorageCredentials,
     require_db_pool,
+    require_gemini,
     require_storage,
 )
 from gcell.shared.infrastructure.pillow_image_normalizer import PillowImageNormalizer
@@ -145,6 +153,19 @@ async def _execute_or_raise[T](operation: Awaitable[T]) -> T:
         # A genuine (non-404) Storage failure that escapes the use case --
         # design.md's status-mapping table, "NEW 502 ObjectStorageError".
         raise HTTPException(status_code=502, detail="storage_error") from exc
+    except GenerationRefusedError as exc:
+        # MUST be caught before the plain `GenerationError` branch below --
+        # `GenerationRefusedError` is a subclass (design.md DD4's
+        # failure-mapping table: a safety block / no usable candidate maps
+        # to a DISTINCT `detail` from a transport/status/timeout failure,
+        # same status code, so the UI can say "the model declined" rather
+        # than "the call failed").
+        raise HTTPException(status_code=502, detail="generation_refused") from exc
+    except GenerationError as exc:
+        # Transport/status/timeout/malformed-response failure -- design.md
+        # DD4, the same 503-when-unconfigured / 502-when-the-call-fails
+        # split `ObjectStorageError` already uses above.
+        raise HTTPException(status_code=502, detail="generation_failed") from exc
 
 
 class AdminProductVariantResponse(BaseModel):
@@ -546,6 +567,101 @@ async def update_admin_product_image_alt_text(
 
     image = await _execute_or_raise(_update())
     return AdminProductImageResponse.from_domain(image)
+
+
+# ---------------------------------------------------------------------------
+# Content generation (content-ai-domains PR 11, design.md "New / changed
+# endpoints"). Both routes are DRAFT-only (D5): neither ever calls a
+# repository or Storage WRITE method, so "no generate handler touches a
+# repository" is unfalsifiable-by-construction, not a review duty (DD2's
+# whole point). Guard order, matching design.md's dependency-order table
+# exactly: 401 (router-level) -> `require_db_pool` 503 -> `require_storage`
+# 503 (alt-text route only -- `copy/generate` never touches Storage) ->
+# `require_gemini` 503. Both compose the SAME two adapters at the
+# composition root: `ProductsContextReader` (Phase 8's DD2 seam, over the
+# request's own Postgres repositories) and `GeminiContentGenerator` (Phase
+# 7's httpx adapter, built fresh per request from `require_gemini`'s
+# `GeminiCredentials` -- same "read fresh per request" rule `StorageCredentials`
+# already documents, never cached on `app.state`).
+# ---------------------------------------------------------------------------
+
+
+def _build_context_reader(conn: asyncpg.Connection) -> ProductsContextReader:
+    return ProductsContextReader(
+        product_repository=PostgresProductRepository(conn),
+        image_repository=PostgresProductImageRepository(conn),
+    )
+
+
+def _build_content_generator(credentials: GeminiCredentials) -> GeminiContentGenerator:
+    return GeminiContentGenerator(api_key=credentials.api_key, model=credentials.model)
+
+
+class AdminGenerateCopyResponse(BaseModel):
+    # Both fields nullable (DD6 partial-output policy): the model returning
+    # exactly one field blank/missing is still a `200` draft, with that
+    # field `None` -- the UI marks it "not generated", never a failure.
+    short_description: str | None
+    description: str | None
+
+    @classmethod
+    def from_draft(cls, draft: ProductCopyDraft) -> "AdminGenerateCopyResponse":
+        return cls(
+            short_description=draft.short_description, description=draft.description
+        )
+
+
+@router.post("/products/{product_id}/copy/generate")
+async def generate_admin_product_copy(
+    product_id: UUID,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+    gemini_credentials: Annotated[GeminiCredentials, Depends(require_gemini)],
+) -> AdminGenerateCopyResponse:
+    async def _generate() -> ProductCopyDraft:
+        async with pool.acquire() as conn:
+            use_case = GenerateProductCopyUseCase(
+                content_generator=_build_content_generator(gemini_credentials),
+                context_reader=_build_context_reader(conn),
+            )
+            return await use_case.execute(product_id)
+
+    draft = await _execute_or_raise(_generate())
+    return AdminGenerateCopyResponse.from_draft(draft)
+
+
+class AdminGenerateAltTextResponse(BaseModel):
+    # Unlike copy generation, DD6 gives alt-text no partial-output
+    # leniency -- `GenerateImageAltTextUseCase` raises `GenerationError`
+    # itself on a blank/missing result, so `alt_text` here is never `None`.
+    alt_text: str
+
+    @classmethod
+    def from_draft(cls, draft: AltTextDraft) -> "AdminGenerateAltTextResponse":
+        return cls(alt_text=draft.alt_text)
+
+
+@router.post("/products/{product_id}/images/{image_id}/alt-text/generate")
+async def generate_admin_product_image_alt_text(
+    product_id: UUID,
+    image_id: UUID,
+    pool: Annotated[asyncpg.Pool, Depends(require_db_pool)],
+    storage_credentials: Annotated[StorageCredentials, Depends(require_storage)],
+    gemini_credentials: Annotated[GeminiCredentials, Depends(require_gemini)],
+) -> AdminGenerateAltTextResponse:
+    # `require_storage` IS a dependency here (unlike the alt-text PATCH
+    # route above) -- DD1's `ObjectStorage.get` reads the actual photo
+    # bytes to send Gemini as image input.
+    async def _generate() -> AltTextDraft:
+        async with pool.acquire() as conn:
+            use_case = GenerateImageAltTextUseCase(
+                content_generator=_build_content_generator(gemini_credentials),
+                context_reader=_build_context_reader(conn),
+                object_storage=_build_storage(storage_credentials),
+            )
+            return await use_case.execute(product_id, image_id)
+
+    draft = await _execute_or_raise(_generate())
+    return AdminGenerateAltTextResponse.from_draft(draft)
 
 
 # ---------------------------------------------------------------------------

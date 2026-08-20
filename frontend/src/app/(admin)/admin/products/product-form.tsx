@@ -47,10 +47,25 @@
  * expressed — the write model's `Field(default=None)` treats an omitted
  * key as "set to null" (DD4's documented full-replacement semantics, not
  * a partial PATCH per field).
+ *
+ * "Generate copy" (content-ai-domains PR 11) prefills the two fields above
+ * by calling `generateProductCopyAction`, rendered ONLY when `productId`
+ * is set — generation needs an existing product to build a prompt from,
+ * so it never appears on the create form. Prefill is done via `ref.value`
+ * assignment on the already-uncontrolled `<textarea>`/`<input>`, exactly
+ * like `image-manager.tsx`'s alt-text refs — NOT `formAction`/`useActionState`
+ * — so clicking it never submits the surrounding `<form>` (D5: the
+ * existing "Save changes" button stays the only write path). A `null`
+ * field in the response (DD6's partial-output policy) leaves that input's
+ * current value untouched rather than clearing it.
  */
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { retireVariantAction, type ProductFormState } from "./actions";
+import {
+  generateProductCopyAction,
+  retireVariantAction,
+  type ProductFormState,
+} from "./actions";
 
 export interface ProductFormVariant {
   id: string;
@@ -119,6 +134,32 @@ export function ProductForm({
     toInitialRows(initialVariants),
   );
   const [isRemoving, startRemoving] = useTransition();
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const shortDescriptionRef = useRef<HTMLInputElement>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [isGenerating, startGenerating] = useTransition();
+
+  function handleGenerateCopy() {
+    if (!productId) {
+      return;
+    }
+    startGenerating(async () => {
+      const result = await generateProductCopyAction(productId);
+      if (result.error) {
+        setGenerateError(result.error);
+        return;
+      }
+      setGenerateError(null);
+      // DD6 partial-output policy: a `null` field means "not generated" —
+      // leave that input's current value untouched rather than clearing it.
+      if (result.description !== null && descriptionRef.current) {
+        descriptionRef.current.value = result.description;
+      }
+      if (result.short_description !== null && shortDescriptionRef.current) {
+        shortDescriptionRef.current.value = result.short_description;
+      }
+    });
+  }
 
   function addRow() {
     setRows((previous) => [
@@ -204,6 +245,7 @@ export function ProductForm({
         <textarea
           id="product-description"
           name="description"
+          ref={descriptionRef}
           defaultValue={initialDescription}
           maxLength={4000}
           rows={4}
@@ -222,11 +264,30 @@ export function ProductForm({
           id="product-short-description"
           name="short_description"
           type="text"
+          ref={shortDescriptionRef}
           defaultValue={initialShortDescription}
           maxLength={160}
           className="border-border rounded-md border px-3 py-2 text-sm"
         />
       </div>
+
+      {productId !== undefined && (
+        <div className="flex flex-col gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isGenerating}
+            onClick={handleGenerateCopy}
+          >
+            Generate copy
+          </Button>
+          {generateError && (
+            <p role="alert" className="text-destructive text-sm">
+              {generateError}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold">Variants</h2>

@@ -15,9 +15,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  */
 
 const RETIRE_VARIANT_ACTION = vi.fn();
+const GENERATE_PRODUCT_COPY_ACTION = vi.fn();
 
 vi.mock("./actions", () => ({
   retireVariantAction: (...args: unknown[]) => RETIRE_VARIANT_ACTION(...args),
+  generateProductCopyAction: (...args: unknown[]) =>
+    GENERATE_PRODUCT_COPY_ACTION(...args),
 }));
 
 async function importProductForm() {
@@ -260,5 +263,83 @@ describe("ProductForm", () => {
     expect(costInput).toHaveAttribute("type", "number");
     expect(costInput).toHaveAttribute("step", "0.01");
     expect(costInput).toHaveAttribute("min", "0");
+  });
+
+  it("does not render a Generate copy button on the CREATE form (no productId yet)", async () => {
+    const stubAction = vi.fn().mockResolvedValue({ error: null });
+    const ProductForm = await importProductForm();
+
+    render(<ProductForm action={stubAction} submitLabel="Create product" />);
+
+    expect(
+      screen.queryByRole("button", { name: /generate copy/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Generate copy button calls generateProductCopyAction and prefills both fields without submitting the form", async () => {
+    GENERATE_PRODUCT_COPY_ACTION.mockResolvedValue({
+      short_description: "Funda resistente y elegante",
+      description: "Una funda de alta calidad para tu telefono, en varios colores.",
+      error: null,
+    });
+    const stubAction = vi.fn().mockResolvedValue({ error: null });
+    const user = userEvent.setup();
+    const ProductForm = await importProductForm();
+
+    render(
+      <ProductForm
+        action={stubAction}
+        submitLabel="Save changes"
+        productId="p1"
+        initialName="Funda iPhone 15"
+        initialModel="iPhone 15"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /generate copy/i }));
+
+    await waitFor(() => {
+      expect(GENERATE_PRODUCT_COPY_ACTION).toHaveBeenCalledWith("p1");
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText(/short description/i)).toHaveValue(
+        "Funda resistente y elegante",
+      );
+    });
+    expect(screen.getByLabelText(/^description$/i)).toHaveValue(
+      "Una funda de alta calidad para tu telefono, en varios colores.",
+    );
+    expect(stubAction).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a Generate copy failure via role=alert without touching the fields", async () => {
+    GENERATE_PRODUCT_COPY_ACTION.mockResolvedValue({
+      short_description: null,
+      description: null,
+      error: "gemini_unavailable",
+    });
+    const user = userEvent.setup();
+    const ProductForm = await importProductForm();
+
+    render(
+      <ProductForm
+        action={vi.fn().mockResolvedValue({ error: null })}
+        submitLabel="Save changes"
+        productId="p1"
+        initialName="Funda iPhone 15"
+        initialModel="iPhone 15"
+        initialDescription="Descripcion original"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /generate copy/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("gemini_unavailable");
+    });
+    expect(screen.getByLabelText(/^description$/i)).toHaveValue(
+      "Descripcion original",
+    );
   });
 });

@@ -26,6 +26,15 @@
  * `getCatalogSupabaseEnv`, both read-only/pure) — no bespoke bucket URL
  * scheme invented here.
  *
+ * "Generate alt text" (content-ai-domains PR 11) prefills the per-image
+ * alt-text input by calling `generateImageAltTextAction`, then sets
+ * `altTextRefs`'s `.value` directly — the SAME ref-mutation approach
+ * `handleSaveAltText` already uses, never `router.refresh()`. Refreshing
+ * here would be actively wrong: the route has zero write side effect
+ * (D5), so a refresh would re-fetch `initialImages` from the server
+ * UNCHANGED and silently wipe the just-generated draft back to its
+ * pre-generate value via this input's `defaultValue`.
+ *
  * @see design.md "Data Flow", "Decision 6: Reorder", "Decision 8"
  */
 import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -35,6 +44,7 @@ import { toPublicPhotoUrl } from "@/lib/catalog/storage-url";
 import { getCatalogSupabaseEnv } from "@/lib/supabase/env";
 import {
   deleteProductImageAction,
+  generateImageAltTextAction,
   reorderProductImagesAction,
   updateProductImageAltTextAction,
   uploadProductImageAction,
@@ -124,6 +134,30 @@ export function ImageManager({
     startMutating(async () => {
       await deleteProductImageAction(formData);
       router.refresh();
+    });
+  }
+
+  function handleGenerateAltText(imageId: string) {
+    startMutating(async () => {
+      const result = await generateImageAltTextAction(productId, imageId);
+      if (result.error) {
+        setAltTextErrors((previous) => ({
+          ...previous,
+          [imageId]: result.error as string,
+        }));
+        return;
+      }
+      setAltTextErrors((previous) =>
+        Object.fromEntries(
+          Object.entries(previous).filter(([id]) => id !== imageId),
+        ),
+      );
+      const input = altTextRefs.current[imageId];
+      if (input && result.alt_text !== null) {
+        input.value = result.alt_text;
+      }
+      // Deliberately NO `router.refresh()` here (D5, no write side
+      // effect) -- see this file's module docstring.
     });
   }
 
@@ -288,6 +322,14 @@ export function ImageManager({
                 onClick={() => handleSaveAltText(image.id)}
               >
                 Save alt text
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isMutating}
+                onClick={() => handleGenerateAltText(image.id)}
+              >
+                Generate alt text
               </Button>
             </div>
             <div className="ml-auto flex items-center gap-2">
