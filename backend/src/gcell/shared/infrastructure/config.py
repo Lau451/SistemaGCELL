@@ -56,3 +56,33 @@ def supabase_service_role_key() -> str | None:
     Delete Contract").
     """
     return os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+
+# Never a floating alias (e.g. a `*-latest` tag): a silent model swap
+# changes output shape and cost without a deploy (design.md DD4). The
+# `GEMINI_MODEL` env override below turns a future deprecation into a
+# config change instead.
+_DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+
+
+def gemini_api_key() -> str | None:
+    """Return the configured Gemini API key, or `None` if unset.
+
+    BACKEND-ONLY — same rule as `supabase_service_role_key()`: this MUST
+    NEVER acquire a `NEXT_PUBLIC_` twin (`test_frontend_service_role_boundary.py`
+    is parametrized over `GEMINI` for exactly this reason). Never logged,
+    never placed in a response body or error detail (design.md DD4:
+    `502 generation_failed`/`generation_refused` are opaque).
+    """
+    return os.environ.get("GEMINI_API_KEY")
+
+
+def gemini_model() -> str:
+    """Return the configured Gemini model id.
+
+    Defaults to `_DEFAULT_GEMINI_MODEL`, overridable by an optional
+    `GEMINI_MODEL` env var (design.md DD4's model-pinning policy). The
+    Gemini REST API version itself is pinned separately, in the adapter's
+    base URL (`/v1beta`), not here.
+    """
+    return os.environ.get("GEMINI_MODEL", _DEFAULT_GEMINI_MODEL)

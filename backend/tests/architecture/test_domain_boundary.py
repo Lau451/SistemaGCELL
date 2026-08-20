@@ -61,3 +61,19 @@ def test_domain_layers_import_no_framework_or_infra_packages() -> None:
         "domain/ layer must not import framework/infrastructure packages "
         f"{sorted(BANNED_MODULES)}, found violations: {offenders}"
     )
+
+
+def test_ai_domain_generation_module_has_no_banned_imports() -> None:
+    """gemini-generation spec, scenario "Domain boundary test passes for
+    ai": `ai/domain/generation.py` MUST exist and stay pure. A dedicated
+    assertion (rather than relying only on the generic sweep above) so
+    this scenario has its own executable, spec-traceable RED/GREEN cycle.
+    """
+    generation_module = (
+        Path(__file__).resolve().parents[2] / "src" / "gcell" / "ai" / "domain" / "generation.py"
+    )
+
+    assert generation_module.is_file(), f"missing ai domain module: {generation_module}"
+    assert not _banned_imports_in_file(generation_module), (
+        f"{generation_module} must not import any of {sorted(BANNED_MODULES)}"
+    )
