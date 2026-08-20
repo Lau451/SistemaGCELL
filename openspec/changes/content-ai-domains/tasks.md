@@ -296,32 +296,101 @@ UI triggers together.
 
 ## Phase 5: Alt-Text Update Path (PR 5, base = PR 1) — zero Gemini dependency
 
-- [ ] 5.1 RED `backend/tests/unit/products/test_update_product_image_alt_text.py`
+- [x] 5.1 RED `backend/tests/unit/products/test_update_product_image_alt_text.py`
       — updates `alt_text` on an existing image, no other field changes
       (spec scenario); a cross-parent `image_id` (product A referencing
       product B's image) → `ImageNotFoundError`/404, `alt_text` unchanged on
       either image (spec scenario, and design's Threat-Matrix IDOR row).
-- [ ] 5.2 GREEN `backend/src/gcell/products/application/image_repository.py`
+      Result: new file, 6 tests (update/no-other-field-change, strip
+      non-blank, `None` clears, blank-after-strip clears, unknown id 404,
+      cross-parent 404 with `alt_text` unchanged on the foreign image);
+      confirmed RED (`ModuleNotFoundError` for `update_product_image_alt_text`)
+      before 5.2-5.4.
+- [x] 5.2 GREEN `backend/src/gcell/products/application/image_repository.py`
       — add `update_alt_text(image_id, alt_text)` port method.
-- [ ] 5.3 GREEN `backend/src/gcell/products/infrastructure/{postgres,in_memory}_product_image_repository.py`
+      Result: done; Protocol stub only, mirrors `delete`'s docstring
+      convention (0 rows → `ImageNotFoundError`, ownership is a use-case
+      concern).
+- [x] 5.3 GREEN `backend/src/gcell/products/infrastructure/{postgres,in_memory}_product_image_repository.py`
       — implement `update_alt_text`; 0 affected rows → `ImageNotFoundError`.
-- [ ] 5.4 GREEN `backend/src/gcell/products/application/update_product_image_alt_text.py`
+      Result: Postgres — `UPDATE product_images SET alt_text = $1 WHERE id
+      = $2`, `_rows_affected` reused; in-memory — `dataclasses.replace`.
+      Deviation (same necessary-but-unlisted category as prior PRs):
+      extended `test_in_memory_product_image_repository.py`,
+      `test_product_image_repository.py` (Postgres), and
+      `test_product_image_repository_adapter_parity.py` with
+      `update_alt_text` port-contract tests — matching every sibling
+      method's existing per-adapter test convention and design.md's own
+      "Postgres and in-memory repositories round-trip ... `update_alt_text`
+      identically" line; all green (2 + 2 + 1 new tests).
+- [x] 5.4 GREEN `backend/src/gcell/products/application/update_product_image_alt_text.py`
       — `get_by_id` → `image is None or image.product_id != product_id` →
       `ImageNotFoundError` (reuses the existing ownership-guard pattern
       verbatim, D4).
-- [ ] 5.5 RED `backend/tests/integration/api/test_admin_products.py` — `PATCH
+      Result: `UpdateProductImageAltTextUseCase` — guard verbatim from
+      `DeleteProductImageUseCase`; normalizes `alt_text` (`None` or
+      blank-after-strip → `None`, else stripped) before calling
+      `update_alt_text`, returns the updated `ProductImage` via
+      `dataclasses.replace`. 6/6 unit tests green.
+- [x] 5.5 RED `backend/tests/integration/api/test_admin_products.py` — `PATCH
       /admin/products/{id}/images/{image_id}` 200 on success; 404 on
       cross-parent/unknown id; 401 with no `Authorization` header **before**
       any 503 check (spec scenario "Unauthenticated alt-text update is
       rejected", Threat-Matrix Routing row); 422 on a body missing
       `alt_text`.
-- [ ] 5.6 GREEN `backend/src/gcell/api/admin.py` — new `PATCH` route, guards
+      Result: no `test_admin_products.py` exists — extended
+      `backend/tests/integration/api/test_admin_images.py`, the repo's
+      actual dedicated admin-image-routes integration test file (a closer
+      match than `test_admin.py`, and this file already carries the exact
+      401-before-503 parametrized guard this task needs) — same
+      deviation-from-literal-filename category as PR2's `test_admin.py`
+      substitution. Added `update-alt-text` to the existing
+      `_IMAGE_ROUTES`/`_spy_all_adapters` parametrization (401 and 503
+      coverage for free) plus 4 dedicated tests: 200 success, 404
+      cross-parent (IDOR, `alt_text` spy proves zero writes), 404 unknown
+      id, 422 missing `alt_text` key. Confirmed RED (405 Method Not
+      Allowed) before 5.6.
+- [x] 5.6 GREEN `backend/src/gcell/api/admin.py` — new `PATCH` route, guards
       in order `verify_admin_jwt` (401) → `require_db_pool` (503), no
       `require_storage` (DD3: no Storage object touched here).
-- [ ] 5.7 RED `frontend/src/app/(admin)/admin/products/image-manager.test.tsx`
+      Result: `AdminUpdateImageAltTextRequest` (`extra="forbid"`,
+      `alt_text: str | None` required key, no default) +
+      `update_admin_product_image_alt_text` route, composing
+      `UpdateProductImageAltTextUseCase` with
+      `PostgresProductImageRepository`. 24/24 `test_admin_images.py`
+      green; full backend suite 448/448 green.
+- [x] 5.7 RED `frontend/src/app/(admin)/admin/products/image-manager.test.tsx`
       — alt text is editable on an already-uploaded image.
-- [ ] 5.8 GREEN `frontend/src/app/(admin)/admin/products/image-manager.tsx`
+      Result: 3 new tests (pre-filled editable field per image — asserted
+      via `getAllByLabelText(/^alt text$/i)` so the upload form's own "Alt
+      text (optional)" label isn't ambiguously matched; save calls
+      `updateProductImageAltTextAction` with `product-id`/`image-id`/
+      `alt-text` FormData + `router.refresh()`; a failed save surfaces
+      `role=alert` and does NOT refresh). Confirmed RED (3 failures —
+      label/button not found, action not mocked-exported) before 5.8.
+      Also added `updateProductImageAltTextAction` to `./actions`'s mock.
+- [x] 5.8 GREEN `frontend/src/app/(admin)/admin/products/image-manager.tsx`
       — editable alt-text field wired to the new `PATCH` route.
+      Result: per-image `<input>` (`defaultValue={image.alt_text ?? ""}`,
+      uncontrolled via a per-id ref map) + "Save alt text" `Button`,
+      `handleSaveAltText` builds the same `FormData` shape as
+      `handleDelete` and calls the new
+      `updateProductImageAltTextAction`; a per-image error state renders
+      `role=alert` without calling `router.refresh()`. Deviation
+      (necessary-but-unlisted, same category as prior PRs): added
+      `updateProductImageAltTextAction` to `actions.ts` (not itself named
+      in this task, but the route has no client-side write path without
+      it) — relays `PATCH .../images/{image_id}` with `{alt_text}`, a
+      blank submitted value relayed as explicit `null` (DD3: clears the
+      column, never omitted since the key is required). Also extended
+      `actions.test.ts` with 4 tests for the new action (JSON relay,
+      blank→null, 404 error state, unauthenticated redirect) — same
+      per-action-file test convention as `reorderProductImagesAction`.
+      11/11 `image-manager.test.tsx` + 62/62 combined green; full frontend
+      suite 47 files/361 tests green; `npx eslint` clean (0 errors, only
+      the pre-existing, unrelated `<img>`/`next/image` warning already
+      documented in this file's own comment); `npx tsc --noEmit` zero
+      errors.
 
 ## Phase 6: `ai` Domain Scaffold (PR 6) — no live Gemini call
 
