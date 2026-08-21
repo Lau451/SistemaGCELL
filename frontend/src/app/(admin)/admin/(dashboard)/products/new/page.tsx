@@ -11,8 +11,8 @@ import { ProductForm } from "../product-form";
 export default function NewProductPage() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-10">
-      <h1 className="text-2xl font-semibold">New product</h1>
-      <ProductForm action={createProductAction} submitLabel="Create product" />
+      <h1 className="font-heading text-2xl font-semibold">Nuevo producto</h1>
+      <ProductForm action={createProductAction} submitLabel="Crear producto" />
     </div>
   );
 }

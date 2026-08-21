@@ -23,7 +23,7 @@ import { redirect } from "next/navigation";
 import { isSafeAdminPath } from "@/lib/admin/redirect";
 import { createSessionClient } from "@/lib/supabase/server";
 
-const GENERIC_SIGN_IN_ERROR = "Invalid email or password.";
+const GENERIC_SIGN_IN_ERROR = "Email o contraseña incorrectos.";
 const ADMIN_LANDING_PATH = "/admin";
 
 export interface SignInState {

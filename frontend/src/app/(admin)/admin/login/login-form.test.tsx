@@ -33,26 +33,26 @@ describe("LoginForm", () => {
     render(<LoginForm next={null} />);
 
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /sign in/i }),
+      screen.getByRole("button", { name: /ingresar/i }),
     ).toBeInTheDocument();
   });
 
   it("submits the typed credentials and shows the generic error the action returns", async () => {
-    SIGN_IN_ACTION.mockResolvedValue({ error: "Invalid email or password." });
+    SIGN_IN_ACTION.mockResolvedValue({ error: "Email o contraseña incorrectos." });
     const user = userEvent.setup();
 
     const LoginForm = await importLoginForm();
     render(<LoginForm next="/admin/products" />);
 
     await user.type(screen.getByLabelText(/email/i), "admin@gcell.local");
-    await user.type(screen.getByLabelText(/password/i), "wrong-pass");
-    await user.click(screen.getByRole("button", { name: /sign in/i }));
+    await user.type(screen.getByLabelText(/contraseña/i), "wrong-pass");
+    await user.click(screen.getByRole("button", { name: /ingresar/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Invalid email or password.",
+        "Email o contraseña incorrectos.",
       );
     });
 

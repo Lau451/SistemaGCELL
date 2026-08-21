@@ -103,7 +103,7 @@ describe("AdminStockPage", () => {
     ).toHaveAttribute("href", "/admin/products/p1");
   });
 
-  it("renders a zero-quantity row with text-destructive and Out of stock", async () => {
+  it("renders a zero-quantity row with text-destructive and Sin stock", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: () =>
@@ -124,12 +124,12 @@ describe("AdminStockPage", () => {
     const jsx = await AdminStockPage({ searchParams: searchParamsOf({}) });
     render(jsx);
 
-    const label = screen.getByText("Out of stock");
+    const label = screen.getByText("Sin stock");
     expect(label).toBeInTheDocument();
     expect(label.closest("td")).toHaveClass("text-destructive");
   });
 
-  it('renders "No variants in the catalog yet." when there is no active filter and no rows', async () => {
+  it('renders "Todavía no hay variantes en el catálogo." when there is no active filter and no rows', async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: () => Promise.resolve([]),
@@ -140,11 +140,11 @@ describe("AdminStockPage", () => {
     render(jsx);
 
     expect(
-      screen.getByText("No variants in the catalog yet."),
+      screen.getByText("Todavía no hay variantes en el catálogo."),
     ).toBeInTheDocument();
   });
 
-  it('renders "No variants match your search or filter." when a filter is active and no rows', async () => {
+  it('renders "No hay variantes que coincidan con tu búsqueda o filtro." when a filter is active and no rows', async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: () => Promise.resolve([]),
@@ -157,7 +157,7 @@ describe("AdminStockPage", () => {
     render(jsx);
 
     expect(
-      screen.getByText("No variants match your search or filter."),
+      screen.getByText("No hay variantes que coincidan con tu búsqueda o filtro."),
     ).toBeInTheDocument();
   });
 
@@ -180,7 +180,7 @@ describe("AdminStockPage", () => {
     );
   });
 
-  it("renders Unable to load stock. when the proxy fetch fails", async () => {
+  it("renders No pudimos cargar el stock. when the proxy fetch fails", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,
       status: 502,
@@ -191,6 +191,6 @@ describe("AdminStockPage", () => {
     const jsx = await AdminStockPage({ searchParams: searchParamsOf({}) });
     render(jsx);
 
-    expect(screen.getByText("Unable to load stock.")).toBeInTheDocument();
+    expect(screen.getByText("No pudimos cargar el stock.")).toBeInTheDocument();
   });
 });

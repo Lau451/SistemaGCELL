@@ -20,7 +20,7 @@ describe("AdminLandingPage", () => {
     const AdminLandingPage = await importPage();
     render(<AdminLandingPage />);
 
-    expect(screen.getByRole("link", { name: /products/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /productos/i })).toHaveAttribute(
       "href",
       "/admin/products",
     );

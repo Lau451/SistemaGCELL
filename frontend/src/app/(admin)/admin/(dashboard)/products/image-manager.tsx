@@ -39,7 +39,10 @@
  */
 import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowDown, ArrowUp, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { toPublicPhotoUrl } from "@/lib/catalog/storage-url";
 import { getCatalogSupabaseEnv } from "@/lib/supabase/env";
 import {
@@ -78,11 +81,11 @@ function assignmentLabel(
   variants: ImageManagerVariant[],
 ): string {
   if (image.variant_id === null) {
-    return "Hero";
+    return "Portada";
   }
   return (
     variants.find((variant) => variant.id === image.variant_id)?.color ??
-    "Unknown variant"
+    "Variante desconocida"
   );
 }
 
@@ -206,161 +209,170 @@ export function ImageManager({
   const { url: supabaseUrl } = getCatalogSupabaseEnv();
 
   return (
-    <div className="flex flex-col gap-6">
-      <h2 className="text-xl font-semibold">Images</h2>
+    <Card>
+      <CardHeader>
+        <CardTitle>Fotos</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-6 pb-5">
+        <form
+          ref={formRef}
+          action={uploadAction}
+          className="border-border bg-muted/30 flex flex-col gap-3 rounded-lg border p-4"
+        >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="image-file" className="text-sm font-medium text-foreground">
+              Archivo de imagen
+            </label>
+            <input
+              id="image-file"
+              name="file"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="text-sm"
+            />
+          </div>
 
-      <form
-        ref={formRef}
-        action={uploadAction}
-        className="border-border flex flex-col gap-3 border-b pb-4"
-      >
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="image-file" className="text-sm font-medium">
-            Image file
-          </label>
-          <input
-            id="image-file"
-            name="file"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="text-sm"
-          />
-        </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="image-variant" className="text-sm font-medium text-foreground">
+              Asignar a
+            </label>
+            <select
+              id="image-variant"
+              name="variant-id"
+              defaultValue=""
+              className="border-border bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/30 rounded-lg border px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-3"
+            >
+              <option value="">Portada (sin variante)</option>
+              {variants.map((variant) => (
+                <option key={variant.id} value={variant.id}>
+                  {variant.color}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="image-variant" className="text-sm font-medium">
-            Assign to
-          </label>
-          <select
-            id="image-variant"
-            name="variant-id"
-            defaultValue=""
-            className="border-border rounded-md border px-3 py-2 text-sm"
-          >
-            <option value="">Hero (no variant)</option>
-            {variants.map((variant) => (
-              <option key={variant.id} value={variant.id}>
-                {variant.color}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="image-alt-text" className="text-sm font-medium">
-            Alt text (optional)
-          </label>
-          <input
+          <Input
             id="image-alt-text"
             name="alt-text"
             type="text"
-            className="border-border rounded-md border px-3 py-2 text-sm"
+            label="Texto alternativo (opcional)"
           />
-        </div>
 
-        {uploadState.error && (
-          <p role="alert" className="text-destructive text-sm">
-            {uploadState.error}
-          </p>
-        )}
+          {uploadState.error && (
+            <p role="alert" className="text-destructive text-sm">
+              {uploadState.error}
+            </p>
+          )}
 
-        <Button type="submit" disabled={uploadPending}>
-          Upload image
-        </Button>
-      </form>
+          <Button type="submit" disabled={uploadPending} className="w-fit">
+            Subir imagen
+          </Button>
+        </form>
 
-      <div className="flex flex-col gap-3">
-        {images.length === 0 && (
-          <p className="text-muted-foreground text-sm">No images yet.</p>
-        )}
-        {images.map((image, index) => (
-          <div
-            key={image.id}
-            className="border-border flex flex-wrap items-center gap-3 border-b pb-3"
-          >
-            {/* Plain `<img>`, not `next/image` — the bucket host isn't in
-                `next.config`'s `remotePatterns` and adding it is out of
-                scope for this change. */}
-            <img
-              src={toPublicPhotoUrl(supabaseUrl, image.storage_path)}
-              alt={image.alt_text ?? ""}
-              className="border-border h-16 w-16 rounded-md border object-cover"
-            />
-            <div className="flex flex-col gap-0.5 text-sm">
-              <span className="font-medium">
-                {assignmentLabel(image, variants)}
-              </span>
-              <span className="text-muted-foreground text-xs">
-                {image.storage_path}
-              </span>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor={`alt-text-${image.id}`}
-                className="text-sm font-medium"
-              >
-                Alt text
-              </label>
-              <input
-                id={`alt-text-${image.id}`}
-                type="text"
-                defaultValue={image.alt_text ?? ""}
-                ref={(el) => {
-                  altTextRefs.current[image.id] = el;
-                }}
-                className="border-border rounded-md border px-2 py-1 text-sm"
+        <div className="flex flex-col gap-3">
+          {images.length === 0 && (
+            <p className="text-muted-foreground text-sm">Todavía no hay imágenes.</p>
+          )}
+          {images.map((image, index) => (
+            <div
+              key={image.id}
+              className="border-border flex flex-wrap items-center gap-3 border-b pb-3 last:border-b-0"
+            >
+              {/* Plain `<img>`, not `next/image` — the bucket host isn't in
+                  `next.config`'s `remotePatterns` and adding it is out of
+                  scope for this change. */}
+              <img
+                src={toPublicPhotoUrl(supabaseUrl, image.storage_path)}
+                alt={image.alt_text ?? ""}
+                className="border-border h-16 w-16 rounded-lg border object-cover"
               />
-              {altTextErrors[image.id] && (
-                <p role="alert" className="text-destructive text-sm">
-                  {altTextErrors[image.id]}
-                </p>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isMutating}
-                onClick={() => handleSaveAltText(image.id)}
-              >
-                Save alt text
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isMutating}
-                onClick={() => handleGenerateAltText(image.id)}
-              >
-                Generate alt text
-              </Button>
+              <div className="flex flex-col gap-0.5 text-sm">
+                <span className="font-medium">
+                  {assignmentLabel(image, variants)}
+                </span>
+                <span className="text-muted-foreground text-xs">
+                  {image.storage_path}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor={`alt-text-${image.id}`}
+                  className="text-sm font-medium text-foreground"
+                >
+                  Texto alternativo
+                </label>
+                <input
+                  id={`alt-text-${image.id}`}
+                  type="text"
+                  defaultValue={image.alt_text ?? ""}
+                  ref={(el) => {
+                    altTextRefs.current[image.id] = el;
+                  }}
+                  className="border-border bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/30 rounded-lg border px-2 py-1 text-sm outline-none transition-colors focus-visible:ring-3"
+                />
+                {altTextErrors[image.id] && (
+                  <p role="alert" className="text-destructive text-sm">
+                    {altTextErrors[image.id]}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isMutating}
+                    onClick={() => handleSaveAltText(image.id)}
+                  >
+                    Guardar texto alternativo
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isMutating}
+                    onClick={() => handleGenerateAltText(image.id)}
+                  >
+                    <Sparkles />
+                    Generar texto alternativo
+                  </Button>
+                </div>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Subir"
+                  disabled={index === 0 || isMutating}
+                  onClick={() => moveImage(index, -1)}
+                >
+                  <ArrowUp />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Bajar"
+                  disabled={index === images.length - 1 || isMutating}
+                  onClick={() => moveImage(index, 1)}
+                >
+                  <ArrowDown />
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={isMutating}
+                  onClick={() => handleDelete(image.id)}
+                >
+                  <Trash2 />
+                  Eliminar
+                </Button>
+              </div>
             </div>
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={index === 0 || isMutating}
-                onClick={() => moveImage(index, -1)}
-              >
-                Up
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={index === images.length - 1 || isMutating}
-                onClick={() => moveImage(index, 1)}
-              >
-                Down
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={isMutating}
-                onClick={() => handleDelete(image.id)}
-              >
-                Delete
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

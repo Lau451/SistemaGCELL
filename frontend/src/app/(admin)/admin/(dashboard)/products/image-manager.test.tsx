@@ -85,7 +85,7 @@ describe("ImageManager", () => {
       />,
     );
 
-    expect(screen.getByText("Hero")).toBeInTheDocument();
+    expect(screen.getByText("Portada")).toBeInTheDocument();
     // "negro" also appears as a <select> option (assign-to dropdown), so
     // scope this to the thumbnail's assignment label span specifically.
     expect(
@@ -108,10 +108,10 @@ describe("ImageManager", () => {
       <ImageManager productId="p1" variants={VARIANTS} initialImages={[]} />,
     );
 
-    const select = screen.getByLabelText(/assign to/i);
+    const select = screen.getByLabelText(/asignar a/i);
     expect(select).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: /hero \(no variant\)/i }),
+      screen.getByRole("option", { name: /portada \(sin variante\)/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: "negro" }),
@@ -131,10 +131,10 @@ describe("ImageManager", () => {
     const file = new File(["fake-bytes"], "photo.webp", {
       type: "image/webp",
     });
-    await user.upload(screen.getByLabelText(/image file/i), file);
-    await user.selectOptions(screen.getByLabelText(/assign to/i), "v1");
-    await user.type(screen.getByLabelText(/alt text/i), "A red case");
-    await user.click(screen.getByRole("button", { name: /upload image/i }));
+    await user.upload(screen.getByLabelText(/archivo de imagen/i), file);
+    await user.selectOptions(screen.getByLabelText(/asignar a/i), "v1");
+    await user.type(screen.getByLabelText(/texto alternativo/i), "A red case");
+    await user.click(screen.getByRole("button", { name: /subir imagen/i }));
 
     await waitFor(() => {
       expect(UPLOAD_ACTION).toHaveBeenCalledTimes(1);
@@ -170,8 +170,8 @@ describe("ImageManager", () => {
     const file = new File(["fake-bytes"], "photo.webp", {
       type: "image/webp",
     });
-    await user.upload(screen.getByLabelText(/image file/i), file);
-    await user.click(screen.getByRole("button", { name: /upload image/i }));
+    await user.upload(screen.getByLabelText(/archivo de imagen/i), file);
+    await user.click(screen.getByRole("button", { name: /subir imagen/i }));
 
     await waitFor(() => {
       expect(ROUTER_REFRESH).toHaveBeenCalledTimes(1);
@@ -190,8 +190,8 @@ describe("ImageManager", () => {
     const file = new File(["fake-bytes"], "photo.txt", {
       type: "text/plain",
     });
-    await user.upload(screen.getByLabelText(/image file/i), file);
-    await user.click(screen.getByRole("button", { name: /upload image/i }));
+    await user.upload(screen.getByLabelText(/archivo de imagen/i), file);
+    await user.click(screen.getByRole("button", { name: /subir imagen/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
@@ -214,7 +214,7 @@ describe("ImageManager", () => {
       />,
     );
 
-    const [firstDelete] = screen.getAllByRole("button", { name: /delete/i });
+    const [firstDelete] = screen.getAllByRole("button", { name: /eliminar/i });
     await user.click(firstDelete);
 
     await waitFor(() => {
@@ -240,8 +240,8 @@ describe("ImageManager", () => {
       />,
     );
 
-    const upButtons = screen.getAllByRole("button", { name: /^up$/i });
-    const downButtons = screen.getAllByRole("button", { name: /^down$/i });
+    const upButtons = screen.getAllByRole("button", { name: /^subir$/i });
+    const downButtons = screen.getAllByRole("button", { name: /^bajar$/i });
 
     expect(upButtons[0]).toBeDisabled();
     expect(downButtons[0]).not.toBeDisabled();
@@ -260,7 +260,7 @@ describe("ImageManager", () => {
       />,
     );
 
-    const altTextInputs = screen.getAllByLabelText(/^alt text$/i);
+    const altTextInputs = screen.getAllByLabelText(/^texto alternativo$/i);
     expect(altTextInputs).toHaveLength(2);
     expect(altTextInputs[0]).toHaveValue("Hero shot");
     expect(altTextInputs[1]).toHaveValue("");
@@ -279,11 +279,11 @@ describe("ImageManager", () => {
       />,
     );
 
-    const [firstAltTextInput] = screen.getAllByLabelText(/^alt text$/i);
+    const [firstAltTextInput] = screen.getAllByLabelText(/^texto alternativo$/i);
     await user.clear(firstAltTextInput);
     await user.type(firstAltTextInput, "Updated alt text");
     const [firstSaveButton] = screen.getAllByRole("button", {
-      name: /save alt text/i,
+      name: /guardar texto alternativo/i,
     });
     await user.click(firstSaveButton);
 
@@ -314,7 +314,7 @@ describe("ImageManager", () => {
     );
 
     const [firstSaveButton] = screen.getAllByRole("button", {
-      name: /save alt text/i,
+      name: /guardar texto alternativo/i,
     });
     await user.click(firstSaveButton);
 
@@ -341,7 +341,7 @@ describe("ImageManager", () => {
     );
 
     const [firstGenerateButton] = screen.getAllByRole("button", {
-      name: /generate alt text/i,
+      name: /generar texto alternativo/i,
     });
     await user.click(firstGenerateButton);
 
@@ -349,7 +349,7 @@ describe("ImageManager", () => {
       expect(GENERATE_ALT_TEXT_ACTION).toHaveBeenCalledWith("p1", "img1");
     });
     await waitFor(() => {
-      const [firstAltTextInput] = screen.getAllByLabelText(/^alt text$/i);
+      const [firstAltTextInput] = screen.getAllByLabelText(/^texto alternativo$/i);
       expect(firstAltTextInput).toHaveValue("Funda negra brillante para telefono");
     });
     expect(UPDATE_ALT_TEXT_ACTION).not.toHaveBeenCalled();
@@ -373,7 +373,7 @@ describe("ImageManager", () => {
     );
 
     const [firstGenerateButton] = screen.getAllByRole("button", {
-      name: /generate alt text/i,
+      name: /generar texto alternativo/i,
     });
     await user.click(firstGenerateButton);
 
@@ -396,7 +396,7 @@ describe("ImageManager", () => {
       />,
     );
 
-    const downButtons = screen.getAllByRole("button", { name: /^down$/i });
+    const downButtons = screen.getAllByRole("button", { name: /^bajar$/i });
     await user.click(downButtons[0]);
 
     await waitFor(() => {

@@ -109,7 +109,7 @@ describe("AdminProductsPage", () => {
 
     expect(screen.getByText("Funda iPhone 15")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /edit/i }),
+      screen.getByRole("link", { name: /editar/i }),
     ).toHaveAttribute("href", "/admin/products/p1");
   });
 
@@ -124,7 +124,7 @@ describe("AdminProductsPage", () => {
     render(jsx);
 
     expect(
-      screen.getByRole("link", { name: /new product/i }),
+      screen.getByRole("link", { name: /nuevo producto/i }),
     ).toHaveAttribute("href", "/admin/products/new");
   });
 
@@ -148,7 +148,7 @@ describe("AdminProductsPage", () => {
     render(jsx);
 
     expect(
-      screen.getByRole("link", { name: /edit/i }),
+      screen.getByRole("link", { name: /editar/i }),
     ).toHaveAttribute("href", "/admin/products/p1");
   });
 
@@ -173,7 +173,7 @@ describe("AdminProductsPage", () => {
     const jsx = await AdminProductsPage();
     render(jsx);
 
-    await user.click(screen.getByRole("button", { name: /retire/i }));
+    await user.click(screen.getByRole("button", { name: /retirar/i }));
 
     expect(RETIRE_PRODUCT_ACTION).toHaveBeenCalledTimes(1);
     const [formData] = RETIRE_PRODUCT_ACTION.mock.calls[0] as [FormData];
@@ -240,7 +240,7 @@ describe("AdminProductsPage", () => {
     render(jsx);
 
     expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.queryByText(/out of stock/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sin stock/i)).not.toBeInTheDocument();
   });
 
   it("renders a zero-quantity variant with the same Out of stock treatment as stock-manager", async () => {
@@ -270,7 +270,7 @@ describe("AdminProductsPage", () => {
     const jsx = await AdminProductsPage();
     render(jsx);
 
-    const label = screen.getByText("Out of stock");
+    const label = screen.getByText("Sin stock");
     expect(label).toBeInTheDocument();
     expect(label.closest("li")).toHaveClass("text-destructive");
   });
@@ -317,6 +317,6 @@ describe("AdminProductsPage", () => {
     const jsx = await AdminProductsPage();
     render(jsx);
 
-    expect(screen.getByText(/unable to load products/i)).toBeInTheDocument();
+    expect(screen.getByText(/no pudimos cargar los productos/i)).toBeInTheDocument();
   });
 });

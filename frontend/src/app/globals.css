@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-nunito-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-rubik);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,6 +39,15 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-brand-cream: var(--brand-cream);
+  --color-brand-blush: var(--brand-blush);
+  --color-brand-blush-strong: var(--brand-blush-strong);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-ink: var(--brand-ink);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,38 +58,53 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /* Soft-tech blush brand palette */
+  --brand-cream: #fbf2ec;
+  --brand-blush: #f6d9df;
+  --brand-blush-strong: #f0c3ce;
+  --brand-primary: #c2185b;
+  --brand-ink: #3b2430;
+
+  --background: var(--brand-cream);
+  --foreground: var(--brand-ink);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: var(--brand-ink);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --popover-foreground: var(--brand-ink);
+  --primary: var(--brand-primary);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: var(--brand-blush);
+  --secondary-foreground: var(--brand-ink);
+  --muted: #f2e4e0;
+  --muted-foreground: #7a6570;
+  --accent: var(--brand-blush);
+  --accent-foreground: var(--brand-ink);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: #e8d9d3;
+  --input: #e8d9d3;
+  --ring: var(--brand-primary);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Admin status colors */
+  --success: #15803d;
+  --success-foreground: oklch(1 0 0);
+  --warning: #b45309;
+  --warning-foreground: oklch(1 0 0);
+
+  /* Admin sidebar: fixed dark plum, not tied to color-scheme */
+  --sidebar: var(--brand-ink);
+  --sidebar-foreground: var(--brand-cream);
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: #4f2f3f;
+  --sidebar-accent-foreground: var(--brand-cream);
+  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-ring: var(--brand-primary);
 }
 
 .dark {

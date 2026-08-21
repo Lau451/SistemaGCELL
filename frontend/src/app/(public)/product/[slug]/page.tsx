@@ -11,6 +11,7 @@
  * makes zero additional fetches when swapping color.
  */
 import { notFound } from "next/navigation";
+import { MessageCircle } from "lucide-react";
 import { deriveHeroImage } from "@/lib/catalog/derive";
 import {
   getCatalogProductBySlug,
@@ -21,12 +22,35 @@ import { toPublicPhotoUrl } from "@/lib/catalog/storage-url";
 import { getCatalogSupabaseEnv } from "@/lib/supabase/env";
 import { createAnonCatalogClient } from "@/lib/supabase/server";
 import { CatalogEmptyState } from "@/components/catalog/catalog-empty-state";
+import { IconButton } from "@/components/ui/icon-button";
 import {
   VariantPicker,
   type VariantPickerVariant,
 } from "@/components/catalog/variant-picker";
 
 export const revalidate = 300;
+
+const GCELL_WHATSAPP_NUMBER = "5493471611216";
+const GCELL_INSTAGRAM_URL = "https://www.instagram.com/gcell_phones";
+
+function InstagramIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <path d="M16 11.37a4 4 0 1 1-7.914 1.174 4 4 0 0 1 7.914-1.174z" />
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+    </svg>
+  );
+}
 
 interface ProductDetailPageProps {
   params: Promise<{ slug: string }>;
@@ -84,14 +108,50 @@ export default async function ProductDetailPage({
     : null;
 
   return (
-    <article className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-10">
-      <div>
-        <h1 className="text-2xl font-semibold">{product.name}</h1>
-        {product.description && (
-          <p className="text-muted-foreground mt-2">{product.description}</p>
-        )}
+    <article className="mx-auto max-w-5xl px-4 py-8 sm:py-10">
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
+        <VariantPicker variants={variants} fallbackImage={fallbackImage} />
+        <div className="flex flex-col gap-4">
+          <h1 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
+            {product.name}
+          </h1>
+          {product.description && (
+            <p className="text-muted-foreground text-sm leading-relaxed sm:text-base">
+              {product.description}
+            </p>
+          )}
+          <div className="mt-2 flex items-center gap-4">
+            <IconButton
+              variant="filled"
+              aria-label={`Consultar por ${product.name} en WhatsApp`}
+              render={
+                <a
+                  href={`https://wa.me/${GCELL_WHATSAPP_NUMBER}?text=${encodeURIComponent(
+                    `Hola! Quería consultar por ${product.name}`,
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
+            >
+              <MessageCircle />
+            </IconButton>
+            <IconButton
+              variant="outline"
+              aria-label={`Consultar por ${product.name} en Instagram`}
+              render={
+                <a
+                  href={GCELL_INSTAGRAM_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
+            >
+              <InstagramIcon />
+            </IconButton>
+          </div>
+        </div>
       </div>
-      <VariantPicker variants={variants} fallbackImage={fallbackImage} />
     </article>
   );
 }

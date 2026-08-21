@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const SIGN_OUT_ACTION = vi.fn();
 
-vi.mock("./actions", () => ({
+vi.mock("../actions", () => ({
   signOutAction: (...args: unknown[]) => SIGN_OUT_ACTION(...args),
 }));
 
@@ -45,7 +45,7 @@ describe("AdminLayout", () => {
     const AdminLayout = await importLayout();
     render(<AdminLayout>{<p>Landing content</p>}</AdminLayout>);
 
-    expect(screen.getByRole("link", { name: /products/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /productos/i })).toHaveAttribute(
       "href",
       "/admin/products",
     );
@@ -78,7 +78,7 @@ describe("AdminLayout", () => {
     const AdminLayout = await importLayout();
     render(<AdminLayout>{<p>Landing content</p>}</AdminLayout>);
 
-    await user.click(screen.getByRole("button", { name: /sign out/i }));
+    await user.click(screen.getByRole("button", { name: /cerrar sesión/i }));
 
     expect(SIGN_OUT_ACTION).toHaveBeenCalledTimes(1);
   });

@@ -60,7 +60,16 @@
  * current value untouched rather than clearing it.
  */
 import { useActionState, useRef, useState, useTransition } from "react";
+import { Sparkles, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   generateProductCopyAction,
   retireVariantAction,
@@ -210,101 +219,120 @@ export function ProductForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="product-name" className="text-sm font-medium">
-          Name
-        </label>
-        <input
-          id="product-name"
-          name="name"
-          type="text"
-          required
-          defaultValue={initialName}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Información básica</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 pb-5">
+          <Input
+            id="product-name"
+            name="name"
+            type="text"
+            required
+            defaultValue={initialName}
+            label="Nombre"
+          />
+          <Input
+            id="product-model"
+            name="model"
+            type="text"
+            required
+            defaultValue={initialModel}
+            label="Modelo"
+          />
+        </CardContent>
+      </Card>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="product-model" className="text-sm font-medium">
-          Model
-        </label>
-        <input
-          id="product-model"
-          name="model"
-          type="text"
-          required
-          defaultValue={initialModel}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Descripción</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 pb-5">
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="product-description"
+              className="text-sm font-medium text-foreground"
+            >
+              Descripción
+            </label>
+            <textarea
+              id="product-description"
+              name="description"
+              ref={descriptionRef}
+              defaultValue={initialDescription}
+              maxLength={4000}
+              rows={4}
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 rounded-lg border px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-3"
+            />
+          </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="product-description" className="text-sm font-medium">
-          Description
-        </label>
-        <textarea
-          id="product-description"
-          name="description"
-          ref={descriptionRef}
-          defaultValue={initialDescription}
-          maxLength={4000}
-          rows={4}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        />
-      </div>
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="product-short-description"
+              className="text-sm font-medium text-foreground"
+            >
+              Descripción corta
+            </label>
+            {/* Plain `<input>`, not the `Input` primitive: `Input` is a
+                non-forwardRef function component, and `shortDescriptionRef`
+                MUST resolve to a real DOM node for `handleGenerateCopy`'s
+                direct `.value` prefill (this file's module docstring). */}
+            <input
+              id="product-short-description"
+              name="short_description"
+              type="text"
+              ref={shortDescriptionRef}
+              defaultValue={initialShortDescription}
+              maxLength={160}
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 h-10 rounded-lg border px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-3"
+            />
+          </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="product-short-description"
-          className="text-sm font-medium"
-        >
-          Short description
-        </label>
-        <input
-          id="product-short-description"
-          name="short_description"
-          type="text"
-          ref={shortDescriptionRef}
-          defaultValue={initialShortDescription}
-          maxLength={160}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        />
-      </div>
+          {productId !== undefined && (
+            <div className="flex flex-col gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isGenerating}
+                onClick={handleGenerateCopy}
+                className="w-fit"
+              >
+                <Sparkles />
+                Generar descripción
+              </Button>
+              {generateError && (
+                <p role="alert" className="text-destructive text-sm">
+                  {generateError}
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {productId !== undefined && (
-        <div className="flex flex-col gap-1.5">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isGenerating}
-            onClick={handleGenerateCopy}
-          >
-            Generate copy
-          </Button>
-          {generateError && (
-            <p role="alert" className="text-destructive text-sm">
-              {generateError}
-            </p>
-          )}
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Estado</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-5">
+            <Badge variant="success">Activo</Badge>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold">Variants</h2>
-        {rows.map((row) => (
-          <div
-            key={row.key}
-            className="border-border flex flex-wrap items-end gap-2 border-b pb-3"
-          >
-            <input type="hidden" name="variant-id" value={row.id ?? ""} />
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor={`${row.key}-color`}
-                className="text-xs font-medium"
-              >
-                Color
-              </label>
-              <input
+      <Card>
+        <CardHeader>
+          <CardTitle>Variantes</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 pb-5">
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className="border-border bg-muted/30 flex flex-wrap items-end gap-2 rounded-lg border p-3"
+            >
+              <input type="hidden" name="variant-id" value={row.id ?? ""} />
+              <Input
                 id={`${row.key}-color`}
                 name="variant-color"
                 type="text"
@@ -313,17 +341,10 @@ export function ProductForm({
                 onChange={(event) =>
                   updateRow(row.key, "color", event.target.value)
                 }
-                className="border-border rounded-md border px-2 py-1.5 text-sm"
+                label="Color"
+                className="w-32"
               />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor={`${row.key}-price`}
-                className="text-xs font-medium"
-              >
-                Price
-              </label>
-              <input
+              <Input
                 id={`${row.key}-price`}
                 name="variant-price"
                 type="number"
@@ -334,17 +355,10 @@ export function ProductForm({
                 onChange={(event) =>
                   updateRow(row.key, "price", event.target.value)
                 }
-                className="border-border rounded-md border px-2 py-1.5 text-sm"
+                label="Precio"
+                className="w-28"
               />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor={`${row.key}-cost`}
-                className="text-xs font-medium"
-              >
-                Cost
-              </label>
-              <input
+              <Input
                 id={`${row.key}-cost`}
                 name="variant-cost"
                 type="number"
@@ -355,18 +369,11 @@ export function ProductForm({
                 onChange={(event) =>
                   updateRow(row.key, "cost", event.target.value)
                 }
-                className="border-border rounded-md border px-2 py-1.5 text-sm"
+                label="Costo"
+                className="w-28"
               />
-            </div>
-            {row.id === null && productId === undefined && (
-              <div className="flex flex-col gap-1">
-                <label
-                  htmlFor={`${row.key}-initial-quantity`}
-                  className="text-xs font-medium"
-                >
-                  Initial quantity
-                </label>
-                <input
+              {row.id === null && productId === undefined && (
+                <Input
                   id={`${row.key}-initial-quantity`}
                   name="variant-initial-quantity"
                   type="number"
@@ -376,24 +383,26 @@ export function ProductForm({
                   onChange={(event) =>
                     updateRow(row.key, "initialQuantity", event.target.value)
                   }
-                  className="border-border rounded-md border px-2 py-1.5 text-sm"
+                  label="Cantidad inicial"
+                  className="w-32"
                 />
-              </div>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isRemoving}
-              onClick={() => removeRow(row)}
-            >
-              Remove
-            </Button>
-          </div>
-        ))}
-        <Button type="button" variant="secondary" onClick={addRow}>
-          Add variant
-        </Button>
-      </div>
+              )}
+              <IconButtonRemove
+                disabled={isRemoving}
+                onClick={() => removeRow(row)}
+              />
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={addRow}
+            className="w-fit"
+          >
+            Agregar variante
+          </Button>
+        </CardContent>
+      </Card>
 
       {state.error && (
         <p role="alert" className="text-destructive text-sm">
@@ -401,9 +410,30 @@ export function ProductForm({
         </p>
       )}
 
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending} className="w-fit">
         {submitLabel}
       </Button>
     </form>
+  );
+}
+
+function IconButtonRemove({
+  disabled,
+  onClick,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={disabled}
+      onClick={onClick}
+      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+    >
+      <X />
+      Quitar
+    </Button>
   );
 }

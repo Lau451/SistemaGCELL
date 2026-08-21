@@ -13,6 +13,10 @@
  * "Route Handler Contract — GET /api/catalog"
  */
 import { useCallback, useState, type FormEvent } from "react";
+import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { Input } from "@/components/ui/input";
 import { CatalogListingView } from "./catalog-listing-view";
 import type { CatalogEmptyStateVariant } from "./catalog-empty-state";
 import type { ProductCardProps } from "./product-card";
@@ -126,18 +130,18 @@ export function CatalogFilters({
     void runSearch(q, model, color, 1);
   }
 
-  function handleModelChange(event: React.ChangeEvent<HTMLSelectElement>) {
-    const value = event.target.value;
-    setModel(value);
+  function handleModelToggle(value: string) {
+    const next = model === value ? "" : value;
+    setModel(next);
     setPage(1);
-    void runSearch(q, value, color, 1);
+    void runSearch(q, next, color, 1);
   }
 
-  function handleColorChange(event: React.ChangeEvent<HTMLSelectElement>) {
-    const value = event.target.value;
-    setColor(value);
+  function handleColorToggle(value: string) {
+    const next = color === value ? "" : value;
+    setColor(next);
     setPage(1);
-    void runSearch(q, model, value, 1);
+    void runSearch(q, model, next, 1);
   }
 
   function handlePageChange(nextPage: number) {
@@ -147,76 +151,95 @@ export function CatalogFilters({
 
   return (
     <div className="flex flex-col gap-6">
-      <form
-        onSubmit={handleSubmit}
-        role="search"
-        className="flex flex-wrap items-center gap-3"
-      >
-        <input
-          type="search"
-          value={q}
-          onChange={(event) => setQ(event.target.value)}
-          placeholder="Buscar productos"
-          aria-label="Buscar productos"
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        />
-        <select
-          aria-label="Modelo"
-          value={model}
-          onChange={handleModelChange}
-          className="border-border rounded-md border px-3 py-2 text-sm"
+      <div className="flex flex-col gap-4 rounded-2xl bg-brand-blush/60 p-4 sm:p-5">
+        <form
+          onSubmit={handleSubmit}
+          role="search"
+          className="flex flex-wrap items-center gap-3"
         >
-          <option value="">Todos los modelos</option>
-          {filters.models.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Color"
-          value={color}
-          onChange={handleColorChange}
-          className="border-border rounded-md border px-3 py-2 text-sm capitalize"
-        >
-          <option value="">Todos los colores</option>
-          {filters.colors.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium"
-        >
-          Buscar
-        </button>
-      </form>
+          <div className="relative min-w-[200px] flex-1">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              type="search"
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              placeholder="Buscar productos"
+              aria-label="Buscar productos"
+              className="rounded-full bg-background pl-9"
+            />
+          </div>
+          <Button type="submit" className="rounded-full">
+            Buscar
+          </Button>
+        </form>
+
+        {(filters.models.length > 0 || filters.colors.length > 0) && (
+          <div className="flex flex-col gap-3">
+            {filters.models.length > 0 && (
+              <div
+                role="group"
+                aria-label="Modelo"
+                className="flex flex-wrap gap-2"
+              >
+                {filters.models.map((m) => (
+                  <Chip
+                    key={m}
+                    pressed={model === m}
+                    onPressedChange={() => handleModelToggle(m)}
+                  >
+                    {m}
+                  </Chip>
+                ))}
+              </div>
+            )}
+            {filters.colors.length > 0 && (
+              <div
+                role="group"
+                aria-label="Color"
+                className="flex flex-wrap gap-2"
+              >
+                {filters.colors.map((c) => (
+                  <Chip
+                    key={c}
+                    pressed={color === c}
+                    onPressedChange={() => handleColorToggle(c)}
+                    className="capitalize"
+                  >
+                    {c}
+                  </Chip>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <CatalogListingView products={items} emptyStateVariant={emptyStateVariant} />
 
       {emptyStateVariant === null && items.length > 0 && totalPages > 1 && (
         <div className="flex items-center justify-center gap-4">
-          <button
+          <Button
             type="button"
+            variant="outline"
             disabled={page <= 1 || isPending}
             onClick={() => handlePageChange(page - 1)}
-            className="border-border rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
           >
             Anterior
-          </button>
-          <span className="text-muted-foreground text-sm">
+          </Button>
+          <span className="text-sm text-muted-foreground">
             Página {page} de {totalPages}
           </span>
-          <button
+          <Button
             type="button"
+            variant="outline"
             disabled={page >= totalPages || isPending}
             onClick={() => handlePageChange(page + 1)}
-            className="border-border rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
           >
             Siguiente
-          </button>
+          </Button>
         </div>
       )}
     </div>

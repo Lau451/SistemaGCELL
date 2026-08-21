@@ -39,7 +39,7 @@ import {
 const ADMIN_LOGIN_PATH = "/admin/login";
 const ADMIN_PRODUCTS_PATH = "/admin/products";
 const BACKEND_UNAVAILABLE_MESSAGE =
-  "Unable to reach the server. Please try again.";
+  "No pudimos conectar con el servidor. Intentá nuevamente.";
 
 export interface ProductFormState {
   error: string | null;

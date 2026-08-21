@@ -45,8 +45,8 @@ describe("ProductForm", () => {
       />,
     );
 
-    expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/model/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/modelo/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/slug/i)).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue(/slug/i)).not.toBeInTheDocument();
   });
@@ -60,7 +60,7 @@ describe("ProductForm", () => {
 
     expect(screen.queryAllByLabelText(/color/i)).toHaveLength(0);
 
-    await user.click(screen.getByRole("button", { name: /add variant/i }));
+    await user.click(screen.getByRole("button", { name: /agregar variante/i }));
 
     expect(screen.getAllByLabelText(/color/i)).toHaveLength(1);
   });
@@ -72,10 +72,10 @@ describe("ProductForm", () => {
 
     render(<ProductForm action={stubAction} submitLabel="Create product" />);
 
-    await user.click(screen.getByRole("button", { name: /add variant/i }));
+    await user.click(screen.getByRole("button", { name: /agregar variante/i }));
     expect(screen.getAllByLabelText(/color/i)).toHaveLength(1);
 
-    await user.click(screen.getByRole("button", { name: /remove/i }));
+    await user.click(screen.getByRole("button", { name: /quitar/i }));
 
     expect(screen.queryAllByLabelText(/color/i)).toHaveLength(0);
     expect(RETIRE_VARIANT_ACTION).not.toHaveBeenCalled();
@@ -102,7 +102,7 @@ describe("ProductForm", () => {
 
     expect(screen.getByLabelText(/color/i)).toHaveValue("negro");
 
-    await user.click(screen.getByRole("button", { name: /remove/i }));
+    await user.click(screen.getByRole("button", { name: /quitar/i }));
 
     await waitFor(() => {
       expect(RETIRE_VARIANT_ACTION).toHaveBeenCalledTimes(1);
@@ -125,8 +125,8 @@ describe("ProductForm", () => {
 
     render(<ProductForm action={stubAction} submitLabel="Create product" />);
 
-    await user.type(screen.getByLabelText(/name/i), "Funda iPhone 15");
-    await user.type(screen.getByLabelText(/model/i), "iPhone 15");
+    await user.type(screen.getByLabelText(/nombre/i), "Funda iPhone 15");
+    await user.type(screen.getByLabelText(/modelo/i), "iPhone 15");
     await user.click(
       screen.getByRole("button", { name: /create product/i }),
     );
@@ -143,9 +143,9 @@ describe("ProductForm", () => {
 
     render(<ProductForm action={stubAction} submitLabel="Create product" />);
 
-    await user.click(screen.getByRole("button", { name: /add variant/i }));
+    await user.click(screen.getByRole("button", { name: /agregar variante/i }));
 
-    expect(screen.getByLabelText(/initial quantity/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/cantidad inicial/i)).toBeInTheDocument();
   });
 
   it("never renders Initial quantity for an existing (already-saved) row", async () => {
@@ -165,7 +165,7 @@ describe("ProductForm", () => {
       />,
     );
 
-    expect(screen.queryByLabelText(/initial quantity/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/cantidad inicial/i)).not.toBeInTheDocument();
   });
 
   it("never renders Initial quantity for a new row added on the EDIT page (productId present)", async () => {
@@ -177,9 +177,9 @@ describe("ProductForm", () => {
       <ProductForm action={stubAction} submitLabel="Save changes" productId="p1" />,
     );
 
-    await user.click(screen.getByRole("button", { name: /add variant/i }));
+    await user.click(screen.getByRole("button", { name: /agregar variante/i }));
 
-    expect(screen.queryByLabelText(/initial quantity/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/cantidad inicial/i)).not.toBeInTheDocument();
   });
 
   it("renders labeled description and short description inputs", async () => {
@@ -188,8 +188,8 @@ describe("ProductForm", () => {
 
     render(<ProductForm action={stubAction} submitLabel="Create product" />);
 
-    expect(screen.getByLabelText(/^description$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/short description/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^descripción$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/descripción corta/i)).toBeInTheDocument();
   });
 
   it("submits successfully with description and short_description left blank", async () => {
@@ -199,8 +199,8 @@ describe("ProductForm", () => {
 
     render(<ProductForm action={stubAction} submitLabel="Create product" />);
 
-    await user.type(screen.getByLabelText(/name/i), "Funda iPhone 15");
-    await user.type(screen.getByLabelText(/model/i), "iPhone 15");
+    await user.type(screen.getByLabelText(/nombre/i), "Funda iPhone 15");
+    await user.type(screen.getByLabelText(/modelo/i), "iPhone 15");
     await user.click(
       screen.getByRole("button", { name: /create product/i }),
     );
@@ -231,7 +231,7 @@ describe("ProductForm", () => {
     );
 
     await user.type(
-      screen.getByLabelText(/short description/i),
+      screen.getByLabelText(/descripción corta/i),
       "Blurb corto",
     );
     await user.click(
@@ -252,10 +252,10 @@ describe("ProductForm", () => {
     const ProductForm = await importProductForm();
 
     render(<ProductForm action={stubAction} submitLabel="Create product" />);
-    await user.click(screen.getByRole("button", { name: /add variant/i }));
+    await user.click(screen.getByRole("button", { name: /agregar variante/i }));
 
-    const priceInput = screen.getByLabelText(/price/i);
-    const costInput = screen.getByLabelText(/cost/i);
+    const priceInput = screen.getByLabelText(/precio/i);
+    const costInput = screen.getByLabelText(/costo/i);
 
     expect(priceInput).toHaveAttribute("type", "number");
     expect(priceInput).toHaveAttribute("step", "0.01");
@@ -272,7 +272,7 @@ describe("ProductForm", () => {
     render(<ProductForm action={stubAction} submitLabel="Create product" />);
 
     expect(
-      screen.queryByRole("button", { name: /generate copy/i }),
+      screen.queryByRole("button", { name: /generar descripción/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -296,17 +296,17 @@ describe("ProductForm", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /generate copy/i }));
+    await user.click(screen.getByRole("button", { name: /generar descripción/i }));
 
     await waitFor(() => {
       expect(GENERATE_PRODUCT_COPY_ACTION).toHaveBeenCalledWith("p1");
     });
     await waitFor(() => {
-      expect(screen.getByLabelText(/short description/i)).toHaveValue(
+      expect(screen.getByLabelText(/descripción corta/i)).toHaveValue(
         "Funda resistente y elegante",
       );
     });
-    expect(screen.getByLabelText(/^description$/i)).toHaveValue(
+    expect(screen.getByLabelText(/^descripción$/i)).toHaveValue(
       "Una funda de alta calidad para tu telefono, en varios colores.",
     );
     expect(stubAction).not.toHaveBeenCalled();
@@ -333,12 +333,12 @@ describe("ProductForm", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /generate copy/i }));
+    await user.click(screen.getByRole("button", { name: /generar descripción/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("gemini_unavailable");
     });
-    expect(screen.getByLabelText(/^description$/i)).toHaveValue(
+    expect(screen.getByLabelText(/^descripción$/i)).toHaveValue(
       "Descripcion original",
     );
   });

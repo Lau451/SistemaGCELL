@@ -56,14 +56,14 @@ describe("StockManager", () => {
 
     render(<StockManager productId="p1" initialStock={STOCK} />);
 
-    // Exactly one "Out of stock" label exists (getByText throws on 0 or 2+
+    // Exactly one "Sin stock" label exists (getByText throws on 0 or 2+
     // matches), proving the zero-quantity variant is the ONLY one flagged.
-    expect(screen.getByText(/out of stock/i)).toBeInTheDocument();
+    expect(screen.getByText(/sin stock/i)).toBeInTheDocument();
 
     const negroRow = screen
       .getByText("negro", { selector: "span.font-medium" })
       .closest("div");
-    expect(negroRow?.textContent).not.toMatch(/out of stock/i);
+    expect(negroRow?.textContent).not.toMatch(/sin stock/i);
   });
 
   it("shows the direction control only when movement type is adjustment", async () => {
@@ -72,18 +72,18 @@ describe("StockManager", () => {
 
     render(<StockManager productId="p1" initialStock={STOCK} />);
 
-    expect(screen.queryByLabelText(/direction/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/dirección/i)).not.toBeInTheDocument();
 
     await user.selectOptions(
-      screen.getByLabelText(/movement type/i),
+      screen.getByLabelText(/tipo de movimiento/i),
       "adjustment",
     );
 
-    expect(screen.getByLabelText(/direction/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/dirección/i)).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText(/movement type/i), "sale");
+    await user.selectOptions(screen.getByLabelText(/tipo de movimiento/i), "sale");
 
-    expect(screen.queryByLabelText(/direction/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/dirección/i)).not.toBeInTheDocument();
   });
 
   it("submits recordStockMovementAction bound to the productId with the selected fields", async () => {
@@ -93,13 +93,13 @@ describe("StockManager", () => {
 
     render(<StockManager productId="p1" initialStock={STOCK} />);
 
-    await user.selectOptions(screen.getByLabelText(/^variant$/i), "v2");
+    await user.selectOptions(screen.getByLabelText(/^variante$/i), "v2");
     await user.selectOptions(
-      screen.getByLabelText(/movement type/i),
+      screen.getByLabelText(/tipo de movimiento/i),
       "restock",
     );
-    await user.type(screen.getByLabelText(/quantity/i), "10");
-    await user.click(screen.getByRole("button", { name: /record movement/i }));
+    await user.type(screen.getByLabelText(/cantidad/i), "10");
+    await user.click(screen.getByRole("button", { name: /registrar movimiento/i }));
 
     await waitFor(() => {
       expect(RECORD_ACTION).toHaveBeenCalledTimes(1);
@@ -122,8 +122,8 @@ describe("StockManager", () => {
 
     render(<StockManager productId="p1" initialStock={STOCK} />);
 
-    await user.type(screen.getByLabelText(/quantity/i), "3");
-    await user.click(screen.getByRole("button", { name: /record movement/i }));
+    await user.type(screen.getByLabelText(/cantidad/i), "3");
+    await user.click(screen.getByRole("button", { name: /registrar movimiento/i }));
 
     await waitFor(() => {
       expect(ROUTER_REFRESH).toHaveBeenCalledTimes(1);
@@ -137,8 +137,8 @@ describe("StockManager", () => {
 
     render(<StockManager productId="p1" initialStock={STOCK} />);
 
-    await user.type(screen.getByLabelText(/quantity/i), "3");
-    await user.click(screen.getByRole("button", { name: /record movement/i }));
+    await user.type(screen.getByLabelText(/cantidad/i), "3");
+    await user.click(screen.getByRole("button", { name: /registrar movimiento/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(

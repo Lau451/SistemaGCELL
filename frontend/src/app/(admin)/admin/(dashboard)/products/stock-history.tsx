@@ -33,6 +33,8 @@
 import { useState, useTransition, type ChangeEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   dayFromParam,
   presetRange,
@@ -64,8 +66,8 @@ export interface StockHistoryProps {
   until?: string;
 }
 
-const UNFILTERED_EMPTY_COPY = "No movements recorded yet.";
-const FILTERED_EMPTY_COPY = "No movements in the selected date range.";
+const UNFILTERED_EMPTY_COPY = "Todavía no hay movimientos registrados.";
+const FILTERED_EMPTY_COPY = "No hay movimientos en el rango de fechas seleccionado.";
 
 export function StockHistory({
   productId,
@@ -168,104 +170,93 @@ export function StockHistory({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <h2 className="text-xl font-semibold">Movement history</h2>
-
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="stock-history-since"
-            className="text-sm font-medium"
-          >
-            Since
-          </label>
-          <input
+    <Card>
+      <CardHeader>
+        <CardTitle>Historial de movimientos</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 pb-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <Input
             id="stock-history-since"
             type="date"
             value={since ? dayFromParam(since) : ""}
             onChange={handleSinceChange}
-            className="border-border rounded-md border px-3 py-2 text-sm"
+            label="Desde"
+            className="w-40"
           />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="stock-history-until"
-            className="text-sm font-medium"
-          >
-            Until
-          </label>
-          <input
+          <Input
             id="stock-history-until"
             type="date"
             value={until ? dayFromParam(until) : ""}
             onChange={handleUntilChange}
-            className="border-border rounded-md border px-3 py-2 text-sm"
+            label="Hasta"
+            className="w-40"
           />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handlePreset("today")}
+          >
+            Hoy
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handlePreset("last7")}
+          >
+            Últimos 7 días
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handlePreset("last30")}
+          >
+            Últimos 30 días
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={handleClear}>
+            Limpiar
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => handlePreset("today")}
-        >
-          Today
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => handlePreset("last7")}
-        >
-          Last 7 days
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => handlePreset("last30")}
-        >
-          Last 30 days
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={handleClear}>
-          Clear
-        </Button>
-      </div>
 
-      {entries.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          {filterActive ? FILTERED_EMPTY_COPY : UNFILTERED_EMPTY_COPY}
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {entries.map((entry) => (
-            <li
-              key={entry.id}
-              className="border-border flex items-center justify-between border-b pb-2 text-sm"
-            >
-              <span className="font-medium">{entry.movement_type}</span>
-              <span>{entry.quantity_delta}</span>
-              <span className="text-muted-foreground">
-                {entry.reason ?? ""}
-              </span>
-              <span className="text-muted-foreground">
-                {entry.created_at}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+        {entries.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            {filterActive ? FILTERED_EMPTY_COPY : UNFILTERED_EMPTY_COPY}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {entries.map((entry) => (
+              <li
+                key={entry.id}
+                className="border-border bg-muted/30 flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+              >
+                <span className="font-medium">{entry.movement_type}</span>
+                <span>{entry.quantity_delta}</span>
+                <span className="text-muted-foreground">
+                  {entry.reason ?? ""}
+                </span>
+                <span className="text-muted-foreground">
+                  {entry.created_at}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
 
-      {cursor !== null && (
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleLoadMore}
-          disabled={loading}
-          className="w-fit"
-        >
-          Load more
-        </Button>
-      )}
-    </div>
+        {cursor !== null && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleLoadMore}
+            disabled={loading}
+            className="w-fit"
+          >
+            Cargar más
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }

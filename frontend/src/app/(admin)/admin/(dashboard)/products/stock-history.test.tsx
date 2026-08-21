@@ -93,7 +93,7 @@ describe("StockHistory", () => {
       />,
     );
 
-    expect(screen.getByText(/no movements/i)).toBeInTheDocument();
+    expect(screen.getByText(/todavía no hay movimientos/i)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -130,7 +130,7 @@ describe("StockHistory", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /load more/i }));
+    await user.click(screen.getByRole("button", { name: /cargar más/i }));
 
     await waitFor(() => {
       expect(screen.getAllByRole("listitem")).toHaveLength(3);
@@ -158,7 +158,7 @@ describe("StockHistory", () => {
     );
 
     expect(
-      screen.queryByRole("button", { name: /load more/i }),
+      screen.queryByRole("button", { name: /cargar más/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -194,19 +194,19 @@ describe("StockHistory", () => {
       />,
     );
 
-    expect(screen.getByLabelText(/since/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/until/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^today$/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/desde/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/hasta/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^hoy$/i })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /last 7 days/i }),
+      screen.getByRole("button", { name: /últimos 7 días/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /last 30 days/i }),
+      screen.getByRole("button", { name: /últimos 30 días/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /limpiar/i })).toBeInTheDocument();
   });
 
-  it('renders "No movements in the selected date range." when a filter is active and yields zero rows (D13)', async () => {
+  it('renders "No hay movimientos en el rango de fechas seleccionado." when a filter is active and yields zero rows (D13)', async () => {
     const StockHistory = await importStockHistory();
 
     render(
@@ -220,12 +220,12 @@ describe("StockHistory", () => {
     );
 
     expect(
-      screen.getByText("No movements in the selected date range."),
+      screen.getByText("No hay movimientos en el rango de fechas seleccionado."),
     ).toBeInTheDocument();
-    expect(screen.queryByText("No movements recorded yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Todavía no hay movimientos registrados.")).not.toBeInTheDocument();
   });
 
-  it('renders "No movements recorded yet." (unchanged copy) when no filter is active (D13)', async () => {
+  it('renders "Todavía no hay movimientos registrados." (unchanged copy) when no filter is active (D13)', async () => {
     const StockHistory = await importStockHistory();
 
     render(
@@ -236,7 +236,7 @@ describe("StockHistory", () => {
       />,
     );
 
-    expect(screen.getByText("No movements recorded yet.")).toBeInTheDocument();
+    expect(screen.getByText("Todavía no hay movimientos registrados.")).toBeInTheDocument();
   });
 
   it("clicking the last-7-days preset pushes the URL with the exact presetRange('last7') query", async () => {
@@ -254,7 +254,7 @@ describe("StockHistory", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /last 7 days/i }));
+    fireEvent.click(screen.getByRole("button", { name: /últimos 7 días/i }));
 
     const expectedParams = new URLSearchParams();
     expectedParams.set("since", expected.since);
@@ -277,7 +277,7 @@ describe("StockHistory", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText(/since/i), {
+    fireEvent.change(screen.getByLabelText(/desde/i), {
       target: { value: "2026-08-01" },
     });
 
@@ -304,7 +304,7 @@ describe("StockHistory", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /clear/i }));
+    await user.click(screen.getByRole("button", { name: /limpiar/i }));
 
     const call = ROUTER_PUSH.mock.calls.at(-1)?.[0] as string;
     const pushedParams = new URLSearchParams(call.split("?")[1] ?? "");
@@ -331,7 +331,7 @@ describe("StockHistory", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /load more/i }));
+    await user.click(screen.getByRole("button", { name: /cargar más/i }));
 
     await waitFor(() => {
       expect(screen.getAllByRole("listitem")).toHaveLength(3);
@@ -361,7 +361,7 @@ describe("StockHistory", () => {
 
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(
-      screen.getByRole("button", { name: /load more/i }),
+      screen.getByRole("button", { name: /cargar más/i }),
     ).toBeInTheDocument();
 
     // A NEW object reference (e.g. after router.refresh() re-runs the
@@ -393,7 +393,7 @@ describe("StockHistory", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveTextContent("return");
     expect(
-      screen.queryByRole("button", { name: /load more/i }),
+      screen.queryByRole("button", { name: /cargar más/i }),
     ).not.toBeInTheDocument();
   });
 });

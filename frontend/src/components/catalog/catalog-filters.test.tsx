@@ -79,7 +79,7 @@ describe("CatalogFilters", () => {
       />,
     );
 
-    await user.selectOptions(screen.getByLabelText("Modelo"), "Galaxy S24");
+    await user.click(screen.getByRole("button", { name: "Galaxy S24" }));
 
     await waitFor(() => {
       expect(screen.getByText("Funda Galaxy S24")).toBeInTheDocument();
@@ -114,7 +114,7 @@ describe("CatalogFilters", () => {
       />,
     );
 
-    await user.selectOptions(screen.getByLabelText("Modelo"), "Galaxy S24");
+    await user.click(screen.getByRole("button", { name: "Galaxy S24" }));
 
     await waitFor(() => {
       expect(replaceStateSpy).toHaveBeenCalled();
@@ -144,7 +144,7 @@ describe("CatalogFilters", () => {
       />,
     );
 
-    await user.selectOptions(screen.getByLabelText("Modelo"), "Galaxy S24");
+    await user.click(screen.getByRole("button", { name: "Galaxy S24" }));
 
     await waitFor(() => {
       expect(

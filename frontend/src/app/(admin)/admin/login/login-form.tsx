@@ -13,6 +13,7 @@
  */
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { signInAction, type SignInState } from "./actions";
 
 const INITIAL_STATE: SignInState = { error: null };
@@ -31,42 +32,35 @@ export function LoginForm({ next }: LoginFormProps) {
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next ?? ""} />
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="admin-login-email" className="text-sm font-medium">
-          Email
-        </label>
-        <input
-          id="admin-login-email"
-          name="email"
-          type="email"
-          autoComplete="username"
-          required
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        />
-      </div>
+      <Input
+        id="admin-login-email"
+        name="email"
+        type="email"
+        autoComplete="username"
+        required
+        label="Email"
+      />
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="admin-login-password" className="text-sm font-medium">
-          Password
-        </label>
-        <input
-          id="admin-login-password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          className="border-border rounded-md border px-3 py-2 text-sm"
-        />
-      </div>
+      <Input
+        id="admin-login-password"
+        name="password"
+        type="password"
+        autoComplete="current-password"
+        required
+        label="Contraseña"
+      />
 
       {state.error && (
-        <p role="alert" className="text-destructive text-sm">
+        <div
+          role="alert"
+          className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-3 py-2 text-sm"
+        >
           {state.error}
-        </p>
+        </div>
       )}
 
-      <Button type="submit" disabled={pending}>
-        Sign in
+      <Button type="submit" disabled={pending} className="w-full">
+        Ingresar
       </Button>
     </form>
   );

@@ -16,6 +16,7 @@
  * @see design.md "Decision 1", "Decision 2", "Interfaces / Contracts"
  */
 import { headers } from "next/headers";
+import { Badge } from "@/components/ui/badge";
 
 async function fetchLowStockCount(): Promise<number | null> {
   try {
@@ -51,8 +52,8 @@ export async function StockAlertBadge() {
   }
 
   return (
-    <span className="text-destructive ml-1 text-xs font-medium">
+    <Badge variant="danger" className="ml-1 border-white/20 bg-white/10">
       ({count})
-    </span>
+    </Badge>
   );
 }

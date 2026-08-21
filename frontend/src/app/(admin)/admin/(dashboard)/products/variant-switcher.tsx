@@ -26,6 +26,7 @@
  * @see design.md "DD3", "DD4", "Interfaces / Contracts"
  */
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 export interface VariantSwitcherProps {
   productId: string;
@@ -64,7 +65,7 @@ export function VariantSwitcher({
   }
 
   return (
-    <nav aria-label="Variant switcher" className="flex flex-wrap gap-2">
+    <nav aria-label="Selector de variante" className="flex flex-wrap gap-2">
       {variants.map((variant) => {
         const isActive = variant.id === activeVariantId;
         return (
@@ -72,11 +73,12 @@ export function VariantSwitcher({
             key={variant.id}
             href={buildVariantHref(productId, variant.id, since, until)}
             aria-current={isActive ? "page" : undefined}
-            className={
+            className={cn(
+              "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
               isActive
-                ? "border-border bg-muted rounded-md border px-3 py-1.5 text-sm font-medium"
-                : "border-border rounded-md border px-3 py-1.5 text-sm"
-            }
+                ? "border-brand-primary bg-brand-blush text-brand-primary"
+                : "border-border text-muted-foreground hover:bg-muted",
+            )}
           >
             {variant.color}
           </Link>

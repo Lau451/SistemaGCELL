@@ -132,8 +132,8 @@ describe("EditProductPage", () => {
     const jsx = await EditProductPage(paramsFor("p1"));
     render(jsx);
 
-    expect(screen.getByLabelText(/^name$/i)).toHaveValue("Funda iPhone 15");
-    expect(screen.getByLabelText(/^model$/i)).toHaveValue("iPhone 15");
+    expect(screen.getByLabelText(/^nombre$/i)).toHaveValue("Funda iPhone 15");
+    expect(screen.getByLabelText(/^modelo$/i)).toHaveValue("iPhone 15");
     expect(screen.getByLabelText(/color/i)).toHaveValue("negro");
     expect(screen.queryByLabelText(/slug/i)).not.toBeInTheDocument();
     // `StockManager` (Phase B / PR2) renders below the images, sourced
@@ -145,7 +145,7 @@ describe("EditProductPage", () => {
     // `StockHistory` (Phase B / PR2) renders below `StockManager`, sourced
     // from the new `fetchAdminProductStockHistory` proxy call, prefetched
     // server-side for `variants[0]` only.
-    expect(screen.getByText("Movement history")).toBeInTheDocument();
+    expect(screen.getByText("Historial de movimientos")).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(screen.getByRole("listitem")).toHaveTextContent("restock");
 
@@ -294,8 +294,8 @@ describe("EditProductPage", () => {
     );
     render(jsx);
 
-    expect(screen.getByText("Start date is after end date.")).toBeInTheDocument();
-    expect(screen.queryByText("Movement history")).not.toBeInTheDocument();
+    expect(screen.getByText("La fecha de inicio es posterior a la fecha de fin.")).toBeInTheDocument();
+    expect(screen.queryByText("Historial de movimientos")).not.toBeInTheDocument();
     expect(
       fetchSpy.mock.calls.some(([input]) =>
         String(input).includes("/stock/movements"),
@@ -467,11 +467,11 @@ describe("EditProductPage", () => {
     // `StockManager`'s write-target `<select>` still defaults to the
     // FIRST stock entry (`stock[0]?.variant_id`), regardless of which
     // variant `?variant=` selects for the read-only history view — D16.
-    expect(screen.getByLabelText(/^variant$/i)).toHaveValue("v1");
+    expect(screen.getByLabelText(/^variante$/i)).toHaveValue("v1");
     // Both variants still appear in the write-target select's options,
     // unfiltered by the active `?variant=`.
     const variantSelect = screen.getByLabelText(
-      /^variant$/i,
+      /^variante$/i,
     ) as HTMLSelectElement;
     const optionLabels = Array.from(variantSelect.options).map(
       (option) => option.textContent,
@@ -506,7 +506,7 @@ describe("EditProductPage", () => {
     render(jsx);
 
     expect(NOT_FOUND).not.toHaveBeenCalled();
-    expect(screen.getByLabelText(/^name$/i)).toHaveValue("Funda iPhone 15");
-    expect(screen.queryByText("Movement history")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^nombre$/i)).toHaveValue("Funda iPhone 15");
+    expect(screen.queryByText("Historial de movimientos")).not.toBeInTheDocument();
   });
 });

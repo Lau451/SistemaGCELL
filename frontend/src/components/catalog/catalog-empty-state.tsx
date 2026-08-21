@@ -10,6 +10,7 @@
  */
 
 import Link from "next/link";
+import { AlertTriangle, PackageSearch, SearchX, type LucideIcon } from "lucide-react";
 
 export type CatalogEmptyStateVariant = "empty-catalog" | "no-results" | "error";
 
@@ -19,40 +20,49 @@ export interface CatalogEmptyStateProps {
 
 const COPY: Record<
   CatalogEmptyStateVariant,
-  { testId: string; heading: string; body: string }
+  { testId: string; heading: string; body: string; icon: LucideIcon }
 > = {
   "empty-catalog": {
     testId: "catalog-empty-state-empty-catalog",
     heading: "Estamos preparando el catálogo",
     body: "Todavía no hay productos publicados. Volvé a visitarnos pronto.",
+    icon: PackageSearch,
   },
   "no-results": {
     testId: "catalog-empty-state-no-results",
     heading: "No encontramos productos para tu búsqueda",
     body: "Probá con otros términos o quitá algunos filtros.",
+    icon: SearchX,
   },
   error: {
     testId: "catalog-empty-state-error",
     heading: "No pudimos cargar el catálogo",
     body: "Ocurrió un problema al conectar con el catálogo. Intentá de nuevo en unos minutos.",
+    icon: AlertTriangle,
   },
 };
 
 export function CatalogEmptyState({ variant }: CatalogEmptyStateProps) {
   const copy = COPY[variant];
+  const Icon = copy.icon;
 
   return (
     <div
       role="status"
       data-testid={copy.testId}
-      className="flex flex-col items-center gap-2 px-4 py-16 text-center"
+      className="mx-auto flex max-w-md flex-col items-center gap-3 px-4 py-20 text-center"
     >
-      <h2 className="text-lg font-semibold">{copy.heading}</h2>
-      <p className="text-muted-foreground max-w-md text-sm">{copy.body}</p>
+      <span className="flex size-14 items-center justify-center rounded-full bg-brand-blush text-brand-primary">
+        <Icon aria-hidden="true" className="size-7" />
+      </span>
+      <h2 className="font-heading text-lg font-semibold text-foreground">
+        {copy.heading}
+      </h2>
+      <p className="text-muted-foreground text-sm">{copy.body}</p>
       {variant === "no-results" && (
         <Link
           href="/catalog"
-          className="text-primary mt-2 text-sm underline-offset-4 hover:underline"
+          className="mt-2 text-sm font-medium text-brand-primary underline-offset-4 hover:underline"
         >
           Limpiar filtros
         </Link>
@@ -60,7 +70,7 @@ export function CatalogEmptyState({ variant }: CatalogEmptyStateProps) {
       {variant === "error" && (
         <Link
           href="/"
-          className="text-primary mt-2 text-sm underline-offset-4 hover:underline"
+          className="mt-2 text-sm font-medium text-brand-primary underline-offset-4 hover:underline"
         >
           Reintentar
         </Link>

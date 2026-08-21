@@ -17,6 +17,7 @@
  * @see design.md "Data Flow", "Decision: No generateStaticParams; reads
  * never throw", "Empty / No-Results / Error States".
  */
+import type { ReactNode } from "react";
 import { CatalogFilters } from "@/components/catalog/catalog-filters";
 import { CatalogListingView } from "@/components/catalog/catalog-listing-view";
 import type { ProductCardProps } from "@/components/catalog/product-card";
@@ -33,6 +34,22 @@ import { createAnonCatalogClient } from "@/lib/supabase/server";
 
 const LISTING_PAGE_SIZE = 12;
 
+function ListingShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
+          Catálogo
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Fundas y accesorios para tu celular.
+        </p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export async function CatalogListingPageContent() {
   const client = createAnonCatalogClient();
   const { url: supabaseUrl } = getCatalogSupabaseEnv();
@@ -45,14 +62,20 @@ export async function CatalogListingPageContent() {
   });
 
   if (!listingResult.ok) {
-    return <CatalogListingView products={[]} emptyStateVariant="error" />;
+    return (
+      <ListingShell>
+        <CatalogListingView products={[]} emptyStateVariant="error" />
+      </ListingShell>
+    );
   }
 
   const { products, total } = listingResult.data;
 
   if (total === 0 || products.length === 0) {
     return (
-      <CatalogListingView products={[]} emptyStateVariant="empty-catalog" />
+      <ListingShell>
+        <CatalogListingView products={[]} emptyStateVariant="empty-catalog" />
+      </ListingShell>
     );
   }
 
@@ -66,7 +89,11 @@ export async function CatalogListingPageContent() {
     ]);
 
   if (!variantsResult.ok || !imagesResult.ok) {
-    return <CatalogListingView products={[]} emptyStateVariant="error" />;
+    return (
+      <ListingShell>
+        <CatalogListingView products={[]} emptyStateVariant="error" />
+      </ListingShell>
+    );
   }
 
   const variants = variantsResult.data;
@@ -106,6 +133,8 @@ export async function CatalogListingPageContent() {
     : { models: [], colors: [] };
 
   return (
-    <CatalogFilters initialItems={cards} initialFilters={filterOptions} />
+    <ListingShell>
+      <CatalogFilters initialItems={cards} initialFilters={filterOptions} />
+    </ListingShell>
   );
 }

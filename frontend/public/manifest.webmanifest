@@ -1,7 +1,7 @@
 {
   "name": "SistemaGCELL",
   "short_name": "SistemaGCELL",
-  "description": "SistemaGCELL catalog and admin platform.",
+  "description": "Catálogo y panel de administración de GCELL.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
