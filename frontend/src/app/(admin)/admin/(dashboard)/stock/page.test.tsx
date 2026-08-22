@@ -77,7 +77,7 @@ describe("AdminStockPage", () => {
     expect(screen.getByText("3")).toBeInTheDocument();
   });
 
-  it("links each row to /admin/products/{product_id}", async () => {
+  it("links each row to /admin/products/{product_id}/stock?variant={variant_id}", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: () =>
@@ -100,7 +100,7 @@ describe("AdminStockPage", () => {
 
     expect(
       screen.getByRole("link", { name: /funda iphone 15/i }),
-    ).toHaveAttribute("href", "/admin/products/p1");
+    ).toHaveAttribute("href", "/admin/products/p1/stock?variant=v1");
   });
 
   it("renders a zero-quantity row with text-destructive and Sin stock", async () => {

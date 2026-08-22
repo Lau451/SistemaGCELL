@@ -11,7 +11,9 @@
  * `Query`-style UI validation, before being forwarded to the proxy as
  * plain strings. The backend does the actual clamping/parsing.
  *
- * D13: each row links to `/admin/products/{product_id}` — triage-then-act.
+ * D13: each row links to `/admin/products/{product_id}/stock?variant={variant_id}`
+ * — triage-then-act, jumping straight to that specific variant's stock
+ * history instead of always defaulting to `variants[0]`.
  * D12: two distinct empty-state strings depending on whether a filter is
  * active, reusing the same normalization the backend applies so a blank
  * `?search=` never triggers the "no match" copy instead of "catalog empty".
@@ -205,7 +207,7 @@ export default async function AdminStockPage({
                     >
                       <td className="px-5 py-3">
                         <Link
-                          href={`/admin/products/${row.product_id}`}
+                          href={`/admin/products/${row.product_id}/stock?variant=${row.variant_id}`}
                           className={
                             isZero
                               ? "text-destructive font-medium underline underline-offset-2"

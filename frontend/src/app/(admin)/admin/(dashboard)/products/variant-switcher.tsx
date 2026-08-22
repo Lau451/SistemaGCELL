@@ -1,6 +1,6 @@
 /**
- * `VariantSwitcher` — server-rendered link row on the product detail page
- * (`[id]/page.tsx`), letting the admin choose which variant's stock
+ * `VariantSwitcher` — server-rendered link row on the product stock page
+ * (`[id]/stock/page.tsx`), letting the admin choose which variant's stock
  * movement history is displayed (design.md D14/DD3). Deliberately a
  * `<nav>` of `<Link>`s, not a `<select>` + `router.push`: this is
  * navigation, not a form control, and a server component needs no
@@ -50,7 +50,7 @@ function buildVariantHref(
   if (until) {
     query.set("until", until);
   }
-  return `/admin/products/${productId}?${query.toString()}`;
+  return `/admin/products/${productId}/stock?${query.toString()}`;
 }
 
 export function VariantSwitcher({
